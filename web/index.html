@@ -504,6 +504,11 @@
             return `${distance.toFixed(1)} km`;
         }
         
+        function formatCoordinates(lat, lon) {
+            if (lat === null || lat === undefined || lon === null || lon === undefined) return 'N/A';
+            return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        }
+        
         function getCountryFlag(country) {
             // Map country names to flag emojis
             const flags = {
@@ -692,6 +697,20 @@
             });
             
             return card;
+        }
+        
+        function selectFlight(icao) {
+            // Remove previous selection
+            document.querySelectorAll('.flight-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selection to clicked card
+            const card = document.querySelector(`[data-icao="${icao}"]`);
+            if (card) {
+                card.classList.add('selected');
+                card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
         }
         
         function updateFlights(flights, stats) {

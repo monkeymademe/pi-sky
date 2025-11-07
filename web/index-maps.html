@@ -150,8 +150,8 @@
         }
         
         .flights-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            display: flex;
+            flex-direction: column;
             gap: 20px;
         }
         
@@ -165,6 +165,7 @@
             display: grid;
             grid-template-rows: auto 1fr auto;
             min-height: 280px;
+            width: 100%;
         }
         
         .flight-card:hover {
@@ -440,7 +441,7 @@
             background: white;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            grid-column: 1 / -1;
+            width: 100%;
         }
         
         .empty-state h2 {
@@ -798,24 +799,29 @@
                 icon: icon
             });
             
-            // Create popup content matching card design but smaller
-            const originCode = flight.origin || '---';
-            const originCountry = flight.origin_country ? `${getCountryFlag(flight.origin_country)} ${flight.origin_country}` : '';
-            const destCode = flight.destination || '---';
-            const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
+            // Store flight data in marker for popup recreation
+            marker._flightData = flight;
             
-            const airlineLogoHtml = flight.airline_logo 
-                ? `<img src="${flight.airline_logo}" alt="${flight.airline_code || 'Airline'}" style="width: 24px; height: 24px; object-fit: contain; border-radius: 3px; background: rgba(255,255,255,0.2); padding: 2px;" onerror="this.style.display='none'">`
-                : '';
-            
-            // Purple plane SVG icon for the popup
-            const planeIcon = `
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 28px; height: 28px;">
-                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#667eea"/>
-                </svg>
-            `;
-            
-            const popupContent = `
+            // Function to generate popup content
+            function generatePopupContent(flight) {
+                // Create popup content matching card design but smaller
+                const originCode = flight.origin || '---';
+                const originCountry = flight.origin_country ? `${getCountryFlag(flight.origin_country)} ${flight.origin_country}` : '';
+                const destCode = flight.destination || '---';
+                const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
+                
+                const airlineLogoHtml = flight.airline_logo 
+                    ? `<img src="${flight.airline_logo}" alt="${flight.airline_code || 'Airline'}" style="width: 24px; height: 24px; object-fit: contain; border-radius: 3px; background: rgba(255,255,255,0.2); padding: 2px;" onerror="this.style.display='none'">`
+                    : '';
+                
+                // Purple plane SVG icon for the popup
+                const planeIcon = `
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 28px; height: 28px;">
+                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#667eea"/>
+                    </svg>
+                `;
+                
+                return `
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
                     <!-- Header -->
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; position: relative;">
@@ -896,12 +902,15 @@
                     </div>
                 </div>
             `;
+            }
             
             // Store custom popup reference in marker
             marker._customPopup = null;
             
-            // Create custom popup that bypasses Leaflet's wrapper completely
-            marker.on('click', function() {
+            // Function to open popup for a marker
+            function openMarkerPopup(marker, flight) {
+                if (!map || !marker) return;
+                
                 // Close any existing custom popup
                 if (window.activeCustomPopup && window.activeCustomPopup !== marker._customPopup) {
                     window.activeCustomPopup.remove();
@@ -912,7 +921,7 @@
                     }
                 }
                 
-                // Toggle popup if clicking the same marker
+                // If popup is already open, close it (toggle behavior)
                 if (marker._customPopup && marker._customPopup.parentNode) {
                     marker._customPopup.remove();
                     if (marker._customPopup._updatePosition) {
@@ -924,6 +933,8 @@
                     window.activeCustomPopup = null;
                     return;
                 }
+                
+                const popupContent = generatePopupContent(flight);
                 
                 // Create custom popup div - just the card HTML directly
                 const popupDiv = L.DomUtil.create('div', 'custom-flight-popup');
@@ -950,7 +961,7 @@
                 
                 // Function to update popup position
                 const updatePosition = () => {
-                    if (popupDiv.parentNode && marker) {
+                    if (popupDiv.parentNode && marker && flight.lat && flight.lon) {
                         // Get marker position in map container coordinates
                         const point = map.latLngToContainerPoint([flight.lat, flight.lon]);
                         
@@ -1012,9 +1023,21 @@
                 setTimeout(() => {
                     map.once('click', closeOnMapClick);
                 }, 100);
+            }
+            
+            // Store the open function on the marker for external access
+            marker.openCustomPopup = function() {
+                openMarkerPopup(marker, marker._flightData);
+            };
+            
+            // Create custom popup that bypasses Leaflet's wrapper completely
+            marker.on('click', function() {
+                openMarkerPopup(marker, flight);
                 
                 // Center map and select flight
-                map.setView([flight.lat, flight.lon], Math.max(map.getZoom(), 12));
+                if (flight.lat && flight.lon) {
+                    map.setView([flight.lat, flight.lon], Math.max(map.getZoom(), 12));
+                }
                 selectFlight(flight.icao);
             });
             
@@ -1132,6 +1155,9 @@
                         const existingMarker = aircraftMarkers[flight.icao];
                         existingMarker.setLatLng([flight.lat, flight.lon]);
                         
+                        // Update flight data stored in marker (for popup updates)
+                        existingMarker._flightData = flight;
+                        
                         // Update the icon with new rotation if heading/track changed
                         const status = flight.status || 'new';
                         const color = status === 'new' ? '#10b981' : '#3b82f6';
@@ -1151,6 +1177,23 @@
                             `
                         });
                         existingMarker.setIcon(newIcon);
+                        
+                        // If popup is open, update it with new flight data
+                        if (existingMarker._customPopup && existingMarker._customPopup.parentNode) {
+                            // Close old popup
+                            existingMarker._customPopup.remove();
+                            if (existingMarker._customPopup._updatePosition) {
+                                map.off('move', existingMarker._customPopup._updatePosition);
+                                map.off('zoom', existingMarker._customPopup._updatePosition);
+                                map.off('moveend', existingMarker._customPopup._updatePosition);
+                            }
+                            existingMarker._customPopup = null;
+                            window.activeCustomPopup = null;
+                            // Reopen with updated data
+                            if (existingMarker.openCustomPopup) {
+                                existingMarker.openCustomPopup();
+                            }
+                        }
                         
                         // Update or create heading line
                         if (angle !== null) {
@@ -1308,11 +1351,16 @@
             
             // Add click handler
             card.addEventListener('click', () => {
-                if (flight.lat && flight.lon) {
-                    // Don't auto-fit bounds, just center on the flight
+                if (flight.lat && flight.lon && map) {
+                    // Center on the flight
                     map.setView([flight.lat, flight.lon], Math.max(map.getZoom(), 12));
-                    if (aircraftMarkers[flight.icao]) {
-                        aircraftMarkers[flight.icao].openPopup();
+                    
+                    // Open the custom popup if marker exists
+                    if (aircraftMarkers[flight.icao] && aircraftMarkers[flight.icao].openCustomPopup) {
+                        // Small delay to ensure map has finished centering
+                        setTimeout(() => {
+                            aircraftMarkers[flight.icao].openCustomPopup();
+                        }, 100);
                     }
                 }
                 selectFlight(flight.icao);
