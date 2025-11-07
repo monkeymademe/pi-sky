@@ -1,0 +1,12 @@
+{
+    "dump1090_url": "http://192.168.1.159:8080/data/aircraft.json",
+    "receiver_lat": 52.40585,
+    "receiver_lon": 13.55214,
+    "hide_receiver": true,
+    "show_test_flight": false,
+    "http_host": "0.0.0.0",
+    "http_port": 8080,
+    "websocket_host": "0.0.0.0",
+    "websocket_port": 8765
+}
+

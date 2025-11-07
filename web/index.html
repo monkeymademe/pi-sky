@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Tracker - Live Feed</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 2em;
+        }
+        
+        .status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.connected {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+        
+        .status-indicator.disconnected {
+            background: #ef4444;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 30px;
+            font-size: 0.9em;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.85em;
+        }
+        
+        .flights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .flight-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            min-height: 280px;
+        }
+        
+        .flight-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .flight-card.new {
+            border-top: 4px solid #10b981;
+        }
+        
+        .flight-card.saved {
+            border-top: 4px solid #3b82f6;
+        }
+        
+        .flight-card.selected {
+            background: #f3f4f6;
+            box-shadow: 0 8px 16px rgba(124, 58, 237, 0.2);
+        }
+        
+        /* Boarding pass style header */
+        .flight-card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .flight-card-header-left {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .flight-card-header-callsign {
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        
+        .flight-card-header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .flight-card-icao {
+            font-size: 0.75em;
+            opacity: 0.9;
+            font-family: monospace;
+            margin-top: 2px;
+        }
+        
+        /* Main route section with plane graphic */
+        .flight-card-route {
+            padding: 24px 20px;
+            position: relative;
+            background: white;
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 16px;
+            align-items: center;
+        }
+        
+        .route-section {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .route-section-label {
+            font-size: 0.7em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .route-airport-code {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 4px;
+        }
+        
+        .route-country-info {
+            font-size: 0.85em;
+            color: #6b7280;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .route-plane-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 0 8px;
+        }
+        
+        .route-plane-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(to right, #667eea 0%, transparent 50%, #667eea 100%);
+            border-top: 1px dashed #c7d2fe;
+        }
+        
+        .route-plane-icon {
+            width: 48px;
+            height: 48px;
+            position: relative;
+            z-index: 1;
+            background: white;
+            padding: 4px;
+        }
+        
+        /* Footer with flight details */
+        .flight-card-footer {
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            padding: 16px 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 16px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 16px;
+        }
+        
+        .flight-detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .flight-detail-label {
+            font-size: 0.7em;
+            text-transform: uppercase;
+            color: #6b7280;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        
+        .flight-detail-value {
+            font-size: 1em;
+            font-weight: bold;
+            color: #1f2937;
+        }
+        
+        .flight-detail-value[style*="monospace"] {
+            font-size: 16px !important;
+        }
+        
+        .flight-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .airline-logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        
+        .airline-logo {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: #f3f4f6;
+            padding: 4px;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+        
+        .flight-callsign {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .flight-icao {
+            font-size: 0.9em;
+            color: #666;
+            font-family: monospace;
+        }
+        
+        .flight-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .flight-status.new {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .flight-status.saved {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .flight-route {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+            margin: 10px 0;
+            padding: 12px;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            border-radius: 8px;
+            line-height: 1.8;
+        }
+        
+        .flight-route .route-codes {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 6px;
+            color: #667eea;
+        }
+        
+        .flight-route .route-countries {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 0.9em;
+            font-weight: normal;
+            color: #6b7280;
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+        
+        .flight-route .route-origin,
+        .flight-route .route-destination {
+            flex: 0 0 auto;
+            text-align: center;
+        }
+        
+        .flight-route .route-separator {
+            flex: 0 0 auto;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .flight-route .route-countries .route-separator {
+            color: #9ca3af;
+            font-weight: normal;
+        }
+        
+        .country-name {
+            font-size: 0.75em;
+            font-weight: normal;
+            color: #6b7280;
+            margin-left: 4px;
+            font-style: italic;
+        }
+        
+        .flight-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .detail {
+            font-size: 0.9em;
+        }
+        
+        .detail-label {
+            color: #666;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+        
+        .detail-value {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .empty-state h2 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state p {
+            color: #666;
+        }
+        
+        .timestamp {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>✈️ Flight Tracker</h1>
+                <div class="timestamp" id="lastUpdate">Waiting for data...</div>
+            </div>
+            <div class="status">
+                <div>
+                    <span class="status-indicator disconnected" id="statusIndicator"></span>
+                    <span id="connectionStatus">Disconnected</span>
+                </div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="activeFlights">0</div>
+                        <div class="stat-label">Active Flights</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="totalFlights">0</div>
+                        <div class="stat-label">Total Detected</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="flightsContainer" class="flights-grid">
+            <div class="empty-state">
+                <h2>Waiting for flight data...</h2>
+                <p>Connecting to flight tracker...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const WS_HOST = window.location.hostname;
+        const WS_PORT = 8765;
+        const wsUrl = `ws://${WS_HOST}:${WS_PORT}`;
+        
+        let ws = null;
+        let reconnectTimeout = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        
+        function updateConnectionStatus(connected) {
+            const indicator = document.getElementById('statusIndicator');
+            const status = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                indicator.className = 'status-indicator connected';
+                status.textContent = 'Connected';
+                reconnectAttempts = 0;
+            } else {
+                indicator.className = 'status-indicator disconnected';
+                status.textContent = 'Disconnected';
+            }
+        }
+        
+        function formatNumber(num) {
+            if (num === null || num === undefined) return 'N/A';
+            return num.toLocaleString();
+        }
+        
+        function formatAltitude(alt) {
+            if (!alt) return 'N/A';
+            return `${formatNumber(alt)} ft`;
+        }
+        
+        function formatSpeed(speed) {
+            if (!speed) return 'N/A';
+            return `${speed.toFixed(1)} kts`;
+        }
+        
+        function formatTrack(track) {
+            if (track === null || track === undefined) return 'N/A';
+            return `${track.toFixed(1)}°`;
+        }
+        
+        function formatVerticalRate(rate) {
+            if (rate === null || rate === undefined) return 'N/A';
+            const sign = rate >= 0 ? '+' : '';
+            return `${sign}${Math.round(rate)} ft/min`;
+        }
+        
+        function formatDistance(distance) {
+            if (distance === null || distance === undefined) return 'N/A';
+            if (distance < 1) {
+                return `${(distance * 1000).toFixed(0)} m`;
+            }
+            return `${distance.toFixed(1)} km`;
+        }
+        
+        function getCountryFlag(country) {
+            // Map country names to flag emojis
+            const flags = {
+                'Germany': '🇩🇪', 'United Kingdom': '🇬🇧', 'France': '🇫🇷',
+                'Netherlands': '🇳🇱', 'Italy': '🇮🇹', 'Spain': '🇪🇸',
+                'Austria': '🇦🇹', 'Switzerland': '🇨🇭', 'Denmark': '🇩🇰',
+                'Sweden': '🇸🇪', 'Norway': '🇳🇴', 'Finland': '🇫🇮',
+                'Poland': '🇵🇱', 'Czech Republic': '🇨🇿', 'Hungary': '🇭🇺',
+                'Greece': '🇬🇷', 'Portugal': '🇵🇹', 'Ireland': '🇮🇪',
+                'Belgium': '🇧🇪', 'Turkey': '🇹🇷', 'Croatia': '🇭🇷',
+                'United Arab Emirates': '🇦🇪', 'Qatar': '🇶🇦', 'Saudi Arabia': '🇸🇦',
+                'Israel': '🇮🇱', 'Singapore': '🇸🇬', 'Hong Kong': '🇭🇰',
+                'Japan': '🇯🇵', 'South Korea': '🇰🇷', 'Thailand': '🇹🇭',
+                'Malaysia': '🇲🇾', 'United States': '🇺🇸', 'China': '🇨🇳'
+            };
+            return flags[country] || '🌍';
+        }
+        
+        function formatRoute(origin, destination, originCountry, destinationCountry) {
+            if (origin && destination) {
+                // First line: Airport codes with flexbox layout for alignment
+                const codesHtml = `
+                    <div class="route-origin">${origin}</div>
+                    <div class="route-separator">→</div>
+                    <div class="route-destination">${destination}</div>
+                `;
+                
+                // Second line: Countries with flags, aligned with codes above
+                let countriesHtml = '';
+                if (originCountry && destinationCountry) {
+                    countriesHtml = `
+                        <div class="route-origin">${getCountryFlag(originCountry)} <span class="country-name">${originCountry}</span></div>
+                        <div class="route-separator">-</div>
+                        <div class="route-destination"><span class="country-name">${destinationCountry}</span> ${getCountryFlag(destinationCountry)}</div>
+                    `;
+                } else if (originCountry) {
+                    countriesHtml = `
+                        <div class="route-origin">${getCountryFlag(originCountry)} <span class="country-name">${originCountry}</span></div>
+                    `;
+                } else if (destinationCountry) {
+                    countriesHtml = `
+                        <div class="route-destination"><span class="country-name">${destinationCountry}</span> ${getCountryFlag(destinationCountry)}</div>
+                    `;
+                }
+                
+                // Only show second line if we have country info
+                if (countriesHtml) {
+                    return `<div class="route-codes">${codesHtml}</div><div class="route-countries">${countriesHtml}</div>`;
+                } else {
+                    return `<div class="route-codes">${codesHtml}</div>`;
+                }
+            } else if (origin) {
+                // First line: Just airport code
+                const codesHtml = `
+                    <div class="route-origin">${origin}</div>
+                    <div class="route-separator">→</div>
+                    <div class="route-destination">(in flight)</div>
+                `;
+                
+                // Second line: Just flag and country name (if available)
+                if (originCountry) {
+                    const countriesHtml = `
+                        <div class="route-origin">${getCountryFlag(originCountry)} <span class="country-name">${originCountry}</span></div>
+                    `;
+                    return `<div class="route-codes">${codesHtml}</div><div class="route-countries">${countriesHtml}</div>`;
+                } else {
+                    return `<div class="route-codes">${codesHtml}</div>`;
+                }
+            } else {
+                return 'Route pending...';
+            }
+        }
+        
+        function createFlightCard(flight) {
+            const card = document.createElement('div');
+            card.className = `flight-card ${flight.status}`;
+            card.dataset.icao = flight.icao;
+            
+            // Build airline logo HTML if available
+            const airlineLogoHtml = flight.airline_logo 
+                ? `<img src="${flight.airline_logo}" alt="${flight.airline_code || 'Airline'}" class="airline-logo" title="${flight.airline_name || flight.airline_code || 'Airline'}" onerror="this.style.display='none'" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px; background: rgba(255,255,255,0.2); padding: 2px;">`
+                : '';
+            
+            // Format origin section
+            const originCode = flight.origin || '---';
+            const originCountry = flight.origin_country ? `${getCountryFlag(flight.origin_country)} ${flight.origin_country}` : '';
+            
+            // Format destination section
+            const destCode = flight.destination || '---';
+            const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
+            
+            // Purple plane SVG icon
+            const planeIcon = `
+                <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#667eea"/>
+                </svg>
+            `;
+            
+            card.innerHTML = `
+                <!-- Header -->
+                <div class="flight-card-header">
+                    <div class="flight-card-header-left">
+                        <div class="flight-card-header-callsign">${flight.callsign || 'N/A'}</div>
+                        <div class="flight-card-icao">${flight.icao}</div>
+                    </div>
+                    <div class="flight-card-header-right">
+                        ${airlineLogoHtml}
+                    </div>
+                </div>
+                
+                <!-- Route Section with Plane -->
+                <div class="flight-card-route">
+                    <div class="route-section">
+                        <div class="route-section-label">From</div>
+                        <div class="route-airport-code">${originCode}</div>
+                        ${originCountry ? `<div class="route-country-info">${originCountry}</div>` : ''}
+                    </div>
+                    
+                    <div class="route-plane-container">
+                        <div class="route-plane-line"></div>
+                        ${planeIcon}
+                    </div>
+                    
+                    <div class="route-section" style="text-align: right;">
+                        <div class="route-section-label">To</div>
+                        <div class="route-airport-code">${destCode}</div>
+                        ${destCountry ? `<div class="route-country-info" style="justify-content: flex-end;">${destCountry}</div>` : ''}
+                    </div>
+                </div>
+                
+                <!-- Footer with Details -->
+                <div class="flight-card-footer">
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Altitude</div>
+                        <div class="flight-detail-value">${formatAltitude(flight.altitude)}</div>
+                    </div>
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Speed</div>
+                        <div class="flight-detail-value">${formatSpeed(flight.speed)}</div>
+                    </div>
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Track</div>
+                        <div class="flight-detail-value">${formatTrack(flight.track)}</div>
+                    </div>
+                    ${flight.vertical_rate !== null && flight.vertical_rate !== undefined ? `
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Vertical</div>
+                        <div class="flight-detail-value">${formatVerticalRate(flight.vertical_rate)}</div>
+                    </div>
+                    ` : ''}
+                    ${flight.distance !== null && flight.distance !== undefined ? `
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Distance</div>
+                        <div class="flight-detail-value">${formatDistance(flight.distance)}</div>
+                    </div>
+                    ` : ''}
+                    ${flight.squawk ? `
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Squawk</div>
+                        <div class="flight-detail-value" style="font-family: monospace;">${flight.squawk}</div>
+                    </div>
+                    ` : ''}
+                    ${flight.lat !== null && flight.lat !== undefined && flight.lon !== null && flight.lon !== undefined ? `
+                    <div class="flight-detail-item" style="grid-column: 1 / -1;">
+                        <div class="flight-detail-label">Location</div>
+                        <div class="flight-detail-value" style="font-family: monospace; font-size: 14px;">${formatCoordinates(flight.lat, flight.lon)}</div>
+                    </div>
+                    ` : ''}
+                    ${flight.aircraft_model || flight.aircraft_type ? `
+                    <div class="flight-detail-item" style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
+                        <div style="flex: 1;">
+                            <div class="flight-detail-label">Aircraft</div>
+                            <div class="flight-detail-value">
+                                ${flight.aircraft_model || flight.aircraft_type || 'N/A'}
+                                ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            // Add click handler
+            card.addEventListener('click', () => {
+                selectFlight(flight.icao);
+            });
+            
+            return card;
+        }
+        
+        function updateFlights(flights, stats) {
+            const container = document.getElementById('flightsContainer');
+            
+            // Update stats
+            document.getElementById('activeFlights').textContent = stats.active || 0;
+            document.getElementById('totalFlights').textContent = stats.total || 0;
+            
+            // Update timestamp
+            const timestamp = document.getElementById('lastUpdate');
+            if (stats.timestamp) {
+                const date = new Date(stats.timestamp);
+                timestamp.textContent = `Last update: ${date.toLocaleTimeString()}`;
+            }
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            if (flights.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h2>Skies are clear!</h2>
+                        <p>Waiting for aircraft data...</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Create flight cards
+            flights.forEach(flight => {
+                const card = createFlightCard(flight);
+                container.appendChild(card);
+            });
+        }
+        
+        function connect() {
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    updateConnectionStatus(true);
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        // Handle pong responses (plain string, not JSON)
+                        if (event.data === 'pong') {
+                            return;
+                        }
+                        
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'flight_update') {
+                            updateFlights(data.flights || [], data.stats || {});
+                        }
+                    } catch (e) {
+                        console.error('Error parsing message:', e);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateConnectionStatus(false);
+                };
+                
+                ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    updateConnectionStatus(false);
+                    attemptReconnect();
+                };
+            } catch (e) {
+                console.error('Error connecting:', e);
+                updateConnectionStatus(false);
+                attemptReconnect();
+            }
+        }
+        
+        function attemptReconnect() {
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                console.error('Max reconnection attempts reached');
+                return;
+            }
+            
+            reconnectAttempts++;
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+            
+            console.log(`Reconnecting in ${delay/1000} seconds... (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+            
+            reconnectTimeout = setTimeout(() => {
+                connect();
+            }, delay);
+        }
+        
+        // Initial connection
+        connect();
+        
+        // Keep connection alive with ping
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send('ping');
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
+
