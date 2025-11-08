@@ -7,6 +7,21 @@
     "http_host": "0.0.0.0",
     "http_port": 8080,
     "websocket_host": "0.0.0.0",
-    "websocket_port": 8765
+    "websocket_port": 8765,
+    "map_generation": {
+        "enabled": true,
+        "min_interval_seconds": 300,
+        "prefer_closest": true,
+        "require_route": true,
+        "min_altitude": 10000,
+        "max_distance_km": 500
+    },
+    "clear_skies": {
+        "enabled": true,
+        "threshold_seconds": 1800,
+        "nearest_airport": "EDDB",
+        "airport_lat": null,
+        "airport_lon": null
+    }
 }
 

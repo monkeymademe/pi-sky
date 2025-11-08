@@ -57,10 +57,27 @@ def load_openflights_airports():
                             iata = parts[4].strip('"').strip() if len(parts) > 4 else ''
                             icao = parts[5].strip('"').strip() if len(parts) > 5 else ''
                             
+                            # Parse latitude and longitude (columns 6 and 7)
+                            lat = None
+                            lon = None
+                            try:
+                                if len(parts) > 6:
+                                    lat_str = parts[6].strip('"').strip()
+                                    if lat_str and lat_str != '\\N':
+                                        lat = float(lat_str)
+                                if len(parts) > 7:
+                                    lon_str = parts[7].strip('"').strip()
+                                    if lon_str and lon_str != '\\N':
+                                        lon = float(lon_str)
+                            except (ValueError, IndexError):
+                                pass
+                            
                             airport_info = {
                                 'country': country,
                                 'name': name,
-                                'city': city
+                                'city': city,
+                                'lat': lat,
+                                'lon': lon
                             }
                             
                             if iata and iata != '\\N' and iata != '':
@@ -108,10 +125,27 @@ def load_openflights_airports():
                 iata = parts[4].strip('"').strip() if len(parts) > 4 else ''
                 icao = parts[5].strip('"').strip() if len(parts) > 5 else ''
                 
+                # Parse latitude and longitude (columns 6 and 7)
+                lat = None
+                lon = None
+                try:
+                    if len(parts) > 6:
+                        lat_str = parts[6].strip('"').strip()
+                        if lat_str and lat_str != '\\N':
+                            lat = float(lat_str)
+                    if len(parts) > 7:
+                        lon_str = parts[7].strip('"').strip()
+                        if lon_str and lon_str != '\\N':
+                            lon = float(lon_str)
+                except (ValueError, IndexError):
+                    pass
+                
                 airport_info = {
                     'country': country,
                     'name': name,
-                    'city': city
+                    'city': city,
+                    'lat': lat,
+                    'lon': lon
                 }
                 
                 if iata and iata != '\\N' and iata != '':
@@ -146,6 +180,79 @@ def get_airport_country(airport_code):
         if airport_info:
             return airport_info.get('country')
     except:
+        pass
+    
+    return None
+
+def get_airport_coordinates(airport_code):
+    """
+    Get latitude and longitude for an airport code from OpenFlights database
+    
+    Args:
+        airport_code: IATA or ICAO airport code (e.g., 'BER', 'EDDB')
+    
+    Returns:
+        tuple: (lat, lon) or (None, None) if not found
+    """
+    if not airport_code:
+        return (None, None)
+    
+    airport_code = airport_code.upper()
+    
+    try:
+        airports = load_openflights_airports()
+        airport_info = airports.get(airport_code)
+        if airport_info:
+            lat = airport_info.get('lat')
+            lon = airport_info.get('lon')
+            return (lat, lon)
+    except:
+        pass
+    
+    return (None, None)
+
+def get_city_name_from_coordinates(lat, lon):
+    """
+    Get city name from coordinates using OpenStreetMap Nominatim API
+    
+    Args:
+        lat: Latitude
+        lon: Longitude
+    
+    Returns:
+        str: City name or None if not found
+    """
+    if lat is None or lon is None:
+        return None
+    
+    try:
+        # Use Nominatim reverse geocoding (free, no API key required)
+        url = f"https://nominatim.openstreetmap.org/reverse"
+        params = {
+            'lat': lat,
+            'lon': lon,
+            'format': 'json',
+            'addressdetails': 1,
+            'zoom': 10  # City level
+        }
+        headers = {
+            'User-Agent': 'FlightTracker/1.0'  # Required by Nominatim
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            address = data.get('address', {})
+            
+            # Try various city name fields
+            city = (address.get('city') or 
+                   address.get('town') or 
+                   address.get('village') or
+                   address.get('municipality') or
+                   address.get('county'))
+            
+            return city
+    except Exception as e:
         pass
     
     return None

@@ -16,6 +16,7 @@ from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import TCPServer
 from math import radians, sin, cos, sqrt, atan2
+import subprocess
 
 # Suppress urllib3 warning
 os.environ['PYTHONWARNINGS'] = 'ignore:urllib3'
@@ -23,20 +24,35 @@ warnings.filterwarnings('ignore', message='.*urllib3.*')
 
 import requests
 import websockets
+import subprocess
 
-from flight_info import get_flight_route, get_aircraft_info_adsblol
+from flight_info import get_flight_route, get_aircraft_info_adsblol, get_airport_coordinates, get_city_name_from_coordinates
 from airline_logos import get_airline_info
 
 # Global state
 flight_memory = {}
 latest_flight_data = None
 websocket_clients = set()
+last_map_generation_time = None  # Track when we last generated a map image
+last_map_flight_icao = None  # Track which flight we last generated a map for
+last_flight_detected_time = None  # Track when we last detected any flight
 
 def load_config():
     """Load configuration from config.json"""
     try:
         with open('config.json', 'r') as f:
-            return json.load(f)
+            config = json.load(f)
+            # Set defaults for map generation if not present
+            if 'map_generation' not in config:
+                config['map_generation'] = {
+                    'enabled': True,
+                    'min_interval_seconds': 300,  # 5 minutes
+                    'prefer_closest': True,
+                    'require_route': True,
+                    'min_altitude': 10000,
+                    'max_distance_km': 500
+                }
+            return config
     except FileNotFoundError:
         print("Error: config.json not found")
         sys.exit(1)
@@ -56,6 +72,393 @@ def get_aircraft(dump1090_url):
     except requests.RequestException as e:
         # Other HTTP errors
         return None
+
+def find_best_flight(enriched_flights, config):
+    """
+    Find the best flight to display based on quality criteria
+    
+    Criteria (in order of priority):
+    1. Has route (origin and destination) if required
+    2. Has valid position (lat/lon)
+    3. Meets distance and altitude requirements
+    4. Closer to receiver (lower distance)
+    5. Has complete data (altitude, speed, track)
+    6. At reasonable altitude (prefer cruising altitude)
+    
+    Args:
+        enriched_flights: List of enriched flight dictionaries
+        config: Configuration dictionary
+    
+    Returns:
+        dict: Best flight data or None
+    """
+    map_config = config.get('map_generation', {})
+    require_route = map_config.get('require_route', True)
+    max_distance = map_config.get('max_distance_km', 500)
+    min_altitude = map_config.get('min_altitude', 10000)
+    prefer_closest = map_config.get('prefer_closest', True)
+    
+    candidates = []
+    
+    for flight in enriched_flights:
+        # Must have route if required
+        if require_route:
+            if not flight.get('origin') or not flight.get('destination'):
+                continue
+        
+        # Must have position
+        if flight.get('lat') is None or flight.get('lon') is None:
+            continue
+        
+        # Check distance requirement
+        distance = flight.get('distance')
+        if distance is not None and distance > max_distance:
+            continue
+        
+        # Check altitude requirement
+        altitude = flight.get('altitude')
+        if altitude is not None and altitude < min_altitude:
+            continue
+        
+        # Score the flight (higher is better)
+        score = 0
+        
+        # Distance score (closer is better, max 100 points)
+        if distance is not None and prefer_closest:
+            # Closer flights get higher scores
+            # Within 50km = 100 points, within 100km = 75, within 200km = 50, etc.
+            if distance <= 50:
+                score += 100
+            elif distance <= 100:
+                score += 75
+            elif distance <= 200:
+                score += 50
+            elif distance <= 500:
+                score += 25
+        elif distance is not None:
+            # If not preferring closest, just give points for being in range
+            score += 50
+        
+        # Data completeness score (max 60 points)
+        if flight.get('altitude') is not None:
+            score += 10
+        if flight.get('speed') is not None:
+            score += 10
+        if flight.get('track') is not None or flight.get('heading') is not None:
+            score += 10
+        if flight.get('aircraft_model') or flight.get('aircraft_type'):
+            score += 10
+        if flight.get('vertical_rate') is not None:
+            score += 10
+        if flight.get('origin') and flight.get('destination'):
+            score += 10  # Bonus for having route
+        
+        # Altitude score (prefer cruising altitude, max 30 points)
+        if altitude is not None:
+            # Prefer flights at cruising altitude (25000-40000 ft)
+            if 25000 <= altitude <= 40000:
+                score += 30
+            elif 15000 <= altitude < 25000 or 40000 < altitude <= 45000:
+                score += 15
+            elif 10000 <= altitude < 15000:
+                score += 5
+        
+        # Recent data score (max 20 points)
+        seen = flight.get('seen', 999)
+        if seen <= 10:  # Very recent
+            score += 20
+        elif seen <= 30:  # Recent
+            score += 10
+        elif seen <= 60:  # Still acceptable
+            score += 5
+        
+        candidates.append((score, flight))
+    
+    if not candidates:
+        return None
+    
+    # Return flight with highest score
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    best_score, best_flight = candidates[0]
+    
+    # Log the selection (only if there are multiple candidates or score is notable)
+    if len(candidates) > 1:
+        print(f"📊 Flight selection: {best_flight.get('callsign', best_flight.get('icao', 'Unknown'))} selected "
+              f"(score: {best_score}, distance: {best_flight.get('distance', 'N/A'):.1f}km, "
+              f"altitude: {best_flight.get('altitude', 'N/A')}ft) from {len(candidates)} candidates")
+    
+    return best_flight
+
+
+def should_generate_map(enriched_flights, config):
+    """
+    Determine if we should generate a map image for the current flights
+    
+    Args:
+        enriched_flights: List of enriched flight dictionaries
+        config: Configuration dictionary
+    
+    Returns:
+        tuple: (should_generate: bool, best_flight: dict or None)
+    """
+    global last_map_generation_time, last_map_flight_icao
+    
+    map_config = config.get('map_generation', {})
+    
+    # Check if map generation is enabled
+    if not map_config.get('enabled', True):
+        return (False, None)
+    
+    min_interval = map_config.get('min_interval_seconds', 300)  # Default 5 minutes
+    
+    # Check if image file exists and how old it is
+    map_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'test_map.png')
+    image_exists = os.path.exists(map_file)
+    
+    # Find best flight candidate
+    best_flight = find_best_flight(enriched_flights, config)
+    if not best_flight:
+        # Log why no flight was selected (only occasionally to avoid spam)
+        if len(enriched_flights) > 0:
+            routes_count = sum(1 for f in enriched_flights if f.get('origin') and f.get('destination'))
+            if routes_count == 0:
+                print("ℹ️  Map generation: No flights with routes found")
+            elif routes_count > 0:
+                # Only log occasionally to avoid spam
+                pass
+        return (False, None)
+    
+    best_callsign = best_flight.get('callsign', best_flight.get('icao', 'Unknown'))
+    
+    # If no image exists, generate immediately for first good flight
+    if not image_exists:
+        print(f"✅ Map generation: Will generate for {best_callsign} (no existing image)")
+        return (True, best_flight)
+    
+    # Check time since last generation
+    current_time = time.time()
+    if last_map_generation_time is not None:
+        time_since_last = current_time - last_map_generation_time
+        if time_since_last < min_interval:
+            # Too soon, don't generate (silently skip)
+            return (False, None)
+    
+    # Don't regenerate for the same flight (unless image is very old)
+    if best_flight.get('icao') == last_map_flight_icao:
+        # Check if image is very old (more than 2x the interval)
+        if image_exists:
+            image_age = current_time - os.path.getmtime(map_file)
+            if image_age < (min_interval * 2):
+                print(f"🔄 Map generation: Skipping {best_callsign} (same flight as last, image age: {int(image_age)}s)")
+                return (False, None)
+            else:
+                print(f"✅ Map generation: Will regenerate for {best_callsign} (same flight, but image is very old: {int(image_age)}s)")
+                return (True, best_flight)
+    
+    # Check if image is old enough to warrant regeneration
+    if image_exists:
+        image_age = current_time - os.path.getmtime(map_file)
+        if image_age < min_interval:
+            # Image too recent, silently skip
+            return (False, None)
+    
+    # All checks passed - will generate
+    image_age = current_time - os.path.getmtime(map_file) if image_exists else 0
+    print(f"✅ Map generation: Will generate for {best_callsign} (image age: {int(image_age)}s, "
+          f"distance: {best_flight.get('distance', 'N/A'):.1f}km, "
+          f"altitude: {best_flight.get('altitude', 'N/A')}ft)")
+    return (True, best_flight)
+
+
+def generate_clear_skies_map(config):
+    """
+    Generate a "clear skies" map centered on airport or receiver location
+    
+    Args:
+        config: Configuration dictionary
+    """
+    global last_map_generation_time
+    
+    clear_skies_config = config.get('clear_skies', {})
+    receiver_lat = config.get('receiver_lat')
+    receiver_lon = config.get('receiver_lon')
+    hide_receiver = config.get('hide_receiver', False)
+    
+    # Determine location to center on
+    target_lat = None
+    target_lon = None
+    location_name = "Receiver"
+    
+    # Priority 1: Airport if configured (and hide_receiver is true, or just use airport if configured)
+    nearest_airport = clear_skies_config.get('nearest_airport')
+    use_airport = False
+    
+    if hide_receiver:
+        # If hiding receiver, always prefer airport
+        use_airport = True
+    elif nearest_airport:
+        # If airport is configured, use it
+        use_airport = True
+    
+    if use_airport and nearest_airport:
+        # Try to get airport coordinates
+        airport_lat = clear_skies_config.get('airport_lat')
+        airport_lon = clear_skies_config.get('airport_lon')
+        
+        if airport_lat is not None and airport_lon is not None:
+            target_lat = airport_lat
+            target_lon = airport_lon
+            location_name = nearest_airport
+        else:
+            # Lookup airport coordinates from OpenFlights database
+            airport_lat, airport_lon = get_airport_coordinates(nearest_airport)
+            if airport_lat is not None and airport_lon is not None:
+                target_lat = airport_lat
+                target_lon = airport_lon
+                location_name = nearest_airport
+                # Update config with found coordinates for future use
+                clear_skies_config['airport_lat'] = airport_lat
+                clear_skies_config['airport_lon'] = airport_lon
+            else:
+                print(f"⚠️  Warning: Could not find coordinates for airport {nearest_airport}, using receiver location")
+                use_airport = False
+    
+    # Priority 2: Receiver location (if no airport or airport lookup failed)
+    if target_lat is None or target_lon is None:
+        if receiver_lat is not None and receiver_lon is not None:
+            target_lat = receiver_lat
+            target_lon = receiver_lon
+            
+            # If hide_receiver is true and no airport, try to get city name
+            if hide_receiver:
+                city_name = get_city_name_from_coordinates(receiver_lat, receiver_lon)
+                if city_name:
+                    location_name = city_name
+                else:
+                    location_name = "Location"
+            else:
+                location_name = "Receiver"
+        else:
+            print("⚠️  Warning: No valid location for clear skies map (no airport or receiver coordinates)")
+            return
+    
+    current_time = time.time()
+    
+    try:
+        # Import the clear skies map generation function
+        from map_to_svg import generate_clear_skies_map
+        
+        print(f"🌤️  Generating clear skies map centered on {location_name}...")
+        success = generate_clear_skies_map(
+            target_lat, 
+            target_lon, 
+            location_name,
+            output_path='test_map.png',
+            width=800,
+            height=480,
+            zoom=11,  # Good zoom level for airports/cities
+            inky_mode=True  # Always use Inky mode for clear skies
+        )
+        
+        if success:
+            last_map_generation_time = current_time
+            print(f"✅ Clear skies map generated: test_map.png (Location: {location_name})")
+        else:
+            print(f"⚠️  Warning: Clear skies map generation failed")
+    except Exception as e:
+        print(f"⚠️  Warning: Error generating clear skies map: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+def generate_map_image(flight_data):
+    """
+    Generate map image for a flight using map_to_svg.py
+    
+    Args:
+        flight_data: Dictionary with flight information
+    """
+    global last_map_generation_time, last_map_flight_icao
+    
+    try:
+        # Build command-line arguments for map_to_svg.py
+        args = [
+            'python3', 'map_to_svg.py',
+            '--lat', str(flight_data.get('lat', 0)),
+            '--lon', str(flight_data.get('lon', 0)),
+            '--output', 'test_map.png',
+            '--overlay-card',
+            '--inky',  # Use Inky-compatible colors
+        ]
+        
+        # Add optional parameters if available
+        if flight_data.get('track') is not None:
+            args.extend(['--track', str(flight_data['track'])])
+        elif flight_data.get('heading') is not None:
+            args.extend(['--track', str(flight_data['heading'])])
+        
+        if flight_data.get('callsign'):
+            args.extend(['--callsign', flight_data['callsign']])
+        
+        if flight_data.get('origin'):
+            args.extend(['--origin', flight_data['origin']])
+        
+        if flight_data.get('destination'):
+            args.extend(['--destination', flight_data['destination']])
+        
+        if flight_data.get('origin_country'):
+            args.extend(['--origin-country', flight_data['origin_country']])
+        
+        if flight_data.get('destination_country'):
+            args.extend(['--destination-country', flight_data['destination_country']])
+        
+        if flight_data.get('altitude') is not None:
+            args.extend(['--altitude', str(flight_data['altitude'])])
+        
+        if flight_data.get('speed') is not None:
+            args.extend(['--speed', str(flight_data['speed'])])
+        
+        if flight_data.get('vertical_rate') is not None:
+            args.extend(['--vertical-rate', str(flight_data['vertical_rate'])])
+        
+        if flight_data.get('distance') is not None:
+            args.extend(['--distance', str(flight_data['distance'])])
+        
+        if flight_data.get('squawk'):
+            args.extend(['--squawk', str(flight_data['squawk'])])
+        
+        if flight_data.get('icao'):
+            args.extend(['--icao', flight_data['icao']])
+        
+        # Run map generation in background (non-blocking)
+        callsign = flight_data.get('callsign', flight_data.get('icao', 'Unknown'))
+        print(f"🗺️  Generating map image for flight {callsign}...")
+        result = subprocess.run(
+            args,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            capture_output=True,
+            text=True,
+            timeout=30  # 30 second timeout
+        )
+        
+        if result.returncode == 0:
+            # Update tracking variables
+            last_map_generation_time = time.time()
+            last_map_flight_icao = flight_data.get('icao')
+            origin = flight_data.get('origin', 'N/A')
+            destination = flight_data.get('destination', 'N/A')
+            print(f"✅ Map image generated: test_map.png (Flight: {callsign}, "
+                  f"Route: {origin} → {destination})")
+        else:
+            error_msg = result.stderr[:200] if result.stderr else result.stdout[:200]
+            print(f"⚠️  Warning: Map generation failed for {callsign}: {error_msg}")
+    except subprocess.TimeoutExpired:
+        callsign = flight_data.get('callsign', flight_data.get('icao', 'Unknown'))
+        print(f"⚠️  Warning: Map generation timed out for {callsign}")
+    except Exception as e:
+        callsign = flight_data.get('callsign', flight_data.get('icao', 'Unknown'))
+        print(f"⚠️  Warning: Error generating map image for {callsign}: {e}")
+
 
 def process_aircraft_data(aircraft_data):
     """
@@ -350,6 +753,17 @@ def process_aircraft_data(aircraft_data):
     stats['receiver_lat'] = config.get('receiver_lat')
     stats['receiver_lon'] = config.get('receiver_lon')
     stats['hide_receiver'] = config.get('hide_receiver', False)
+    
+    # Check if we should generate a map image
+    should_gen, best_flight = should_generate_map(enriched_flights, config)
+    if should_gen and best_flight:
+        # Generate map in background thread (non-blocking)
+        map_thread = threading.Thread(
+            target=generate_map_image,
+            args=(best_flight,),
+            daemon=True
+        )
+        map_thread.start()
     
     return {
         'type': 'flight_update',
