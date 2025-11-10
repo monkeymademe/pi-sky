@@ -17,25 +17,25 @@ Features:
 
 Usage:
     # Generate PNG map with OpenStreetMap (requires: pip install pillow requests)
-    python3 map_to_svg.py --lat 52.3667 --lon 13.5033
+    python3 map_to_png.py --lat 52.3667 --lon 13.5033
     
     # Generate PNG with track/heading
-    python3 map_to_svg.py --lat 52.3667 --lon 13.5033 --track 264.2
+    python3 map_to_png.py --lat 52.3667 --lon 13.5033 --track 264.2
     
     # Generate map with flight card overlay (requires: pip install cairosvg)
-    python3 map_to_svg.py --lat 52.3667 --lon 13.5033 --track 264.2 \
+    python3 map_to_png.py --lat 52.3667 --lon 13.5033 --track 264.2 \
         --overlay-card --callsign "DLH456" --origin "BER" --destination "CDG" \
         --origin-country "Germany" --destination-country "France" \
         --altitude 37375 --speed 451.4
     
     # Force SVG output (no external dependencies)
-    python3 map_to_svg.py --lat 52.3667 --lon 13.5033 --format svg
+    python3 map_to_png.py --lat 52.3667 --lon 13.5033 --format svg
     
     # Customize map size and zoom level
-    python3 map_to_svg.py --lat 52.3667 --lon 13.5033 --zoom 12 --width 800 --height 480
+    python3 map_to_png.py --lat 52.3667 --lon 13.5033 --zoom 12 --width 800 --height 480
     
     # See all options
-    python3 map_to_svg.py --help
+    python3 map_to_png.py --help
 
 Dependencies:
     Required for PNG: pillow, requests
@@ -104,19 +104,17 @@ except ImportError:
 
 # Try to import cairosvg for SVG to PNG conversion
 # On macOS with Homebrew, we need to help cairocffi find Cairo
-# The issue is that cairocffi uses its own dlopen which doesn't check Homebrew paths
+# On Linux (Raspberry Pi), Cairo should be in standard paths
 HAS_CAIROSVG = False
 _cairosvg_module = None
+_cairosvg_error = None
 try:
     if sys.platform == 'darwin':
+        # macOS-specific: Check Homebrew paths
         homebrew_lib = '/opt/homebrew/lib'
         cairo_lib = f'{homebrew_lib}/libcairo.2.dylib'
         if os.path.exists(cairo_lib):
-            # Create a symlink in a standard location that cairocffi will find
-            # Or patch cairocffi's source directly
             try:
-                # Try to monkey-patch cairocffi's dlopen function
-                # We need to do this before importing cairocffi
                 import ctypes
                 import ctypes.util
                 
@@ -128,11 +126,33 @@ try:
                             return cairo_lib
                     return original_find(name)
                 ctypes.util.find_library = cairo_find_library
-                
-                # Also try to patch the dlopen in cairocffi after import
-                # But first, let's try importing with the patched find_library
             except:
                 pass
+    elif sys.platform.startswith('linux'):
+        # Linux (Raspberry Pi): Check common library paths
+        # Cairo should be in standard system paths, but we can help find it
+        common_lib_paths = [
+            '/usr/lib',
+            '/usr/lib/aarch64-linux-gnu',  # 64-bit ARM (Pi 4/5)
+            '/usr/lib/arm-linux-gnueabihf',  # 32-bit ARM (older Pi)
+            '/usr/local/lib',
+        ]
+        
+        # Try to find libcairo
+        import ctypes.util
+        original_find = ctypes.util.find_library
+        
+        def linux_cairo_find_library(name):
+            if 'cairo' in name.lower():
+                # Try standard paths first
+                for lib_path in common_lib_paths:
+                    for lib_name in ['libcairo.so.2', 'libcairo-2.so', 'libcairo.so']:
+                        full_path = os.path.join(lib_path, lib_name)
+                        if os.path.exists(full_path):
+                            return full_path
+            return original_find(name)
+        
+        ctypes.util.find_library = linux_cairo_find_library
     
     import cairosvg
     _cairosvg_module = cairosvg
@@ -144,11 +164,19 @@ try:
         HAS_CAIROSVG = True
     except Exception as e:
         HAS_CAIROSVG = False
+        _cairosvg_error = str(e)
         # The library is installed but cairocffi can't find it, or there's another error
-        # This might be a known issue on macOS with Homebrew
-except (ImportError, OSError, AttributeError, Exception):
+except (ImportError, OSError, AttributeError, Exception) as e:
     HAS_CAIROSVG = False
     _cairosvg_module = None
+    _cairosvg_error = str(e)
+
+# Try to import Inky display library
+try:
+    from inky.auto import auto
+    HAS_INKY = True
+except ImportError:
+    HAS_INKY = False
 
 # Try to import flight card generator
 try:
@@ -1226,13 +1254,80 @@ def generate_map_svg(flight_data, output_path='test_map.svg', width=800, height=
     return svg
 
 
+def display_on_inky(image_path):
+    """
+    Display an image on Inky Impression 7.3" display
+    
+    Args:
+        image_path: Path to the image file to display
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if not HAS_INKY:
+        print("Warning: Inky library not available. Install with: pip install inky[rpi,fonts]", file=sys.stderr)
+        return False
+    
+    if not HAS_PIL:
+        print("Warning: PIL/Pillow required for Inky display", file=sys.stderr)
+        return False
+    
+    try:
+        # Initialize Inky display (auto-detects the connected display)
+        inky = auto()
+        
+        print(f"Displaying on Inky Impression 7.3\" (resolution: {inky.resolution})...")
+        
+        # Load the image
+        img = Image.open(image_path)
+        
+        # Resize image to match display resolution if needed
+        if img.size != inky.resolution:
+            print(f"Resizing image from {img.size} to {inky.resolution}...")
+            try:
+                resample = Image.Resampling.LANCZOS
+            except AttributeError:
+                resample = Image.LANCZOS
+            img = img.resize(inky.resolution, resample)
+        
+        # Ensure image is in RGB mode
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Set the image on the display
+        inky.set_image(img)
+        inky.set_border(inky.WHITE)
+        
+        # Update the display
+        inky.show()
+        print("✓ Display updated successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"Error displaying on Inky: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 def main():
     """Generate a map section with flight location"""
+    # Print diagnostic information about available libraries
+    print("Library availability check:", file=sys.stderr)
+    print(f"  PIL/Pillow: {'✓ Available' if HAS_PIL else '✗ Missing (pip install pillow)'}", file=sys.stderr)
+    print(f"  requests: {'✓ Available' if HAS_REQUESTS else '✗ Missing (pip install requests)'}", file=sys.stderr)
+    print(f"  svglib: {'✓ Available' if HAS_SVGLIB else '✗ Missing (pip install svglib reportlab)'}", file=sys.stderr)
+    print(f"  cairosvg: {'✓ Available' if HAS_CAIROSVG else '✗ Missing'}", file=sys.stderr)
+    if not HAS_CAIROSVG and _cairosvg_error:
+        print(f"    Error: {_cairosvg_error}", file=sys.stderr)
+        print(f"    Install: sudo apt-get install libcairo2-dev (then: pip install cairosvg)", file=sys.stderr)
+    print(f"  Inky: {'✓ Available' if HAS_INKY else '✗ Missing (pip install inky[rpi,fonts])'}", file=sys.stderr)
+    print(f"  generate_flight_card: {'✓ Available' if HAS_FLIGHT_CARD else '✗ Missing (file not found)'}", file=sys.stderr)
+    print("", file=sys.stderr)
+    
     parser = argparse.ArgumentParser(description='Generate an SVG map section with flight location')
     parser.add_argument('--output', '-o', default=None,
-                       help='Output file path (default: test_map.png for PNG, test_map.svg for SVG)')
+                       help='Output file path (default: inky_ready.png for PNG, test_map.svg for SVG)')
     parser.add_argument('--lat', type=float, required=True,
                        help='Latitude of flight location')
     parser.add_argument('--lon', type=float, required=True,
@@ -1281,7 +1376,7 @@ def main():
     # Set default output filename based on format
     if args.output is None:
         if args.format == 'png':
-            args.output = 'test_map.png'
+            args.output = 'inky_ready.png'
         else:
             args.output = 'test_map.svg'
     
@@ -1341,6 +1436,10 @@ def main():
                 print(f"  Zoom: {args.zoom}")
                 if args.inky:
                     print(f"  Colors: Converted to Inky Impression 73 palette")
+                
+                # Note: Use display_inky.py script to display on Inky display
+                # This keeps map generation and display separate for testing
+                
                 return 0
             else:
                 print("Warning: PNG generation failed, falling back to SVG...", file=sys.stderr)

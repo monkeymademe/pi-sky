@@ -15,7 +15,7 @@ pip install --upgrade cairosvg
 python3 fix_cairo.py
 ```
 
-After this, running `map_to_svg.py` with `--overlay-card` will automatically use the high-quality SVG rendering, preserving all gradients, styling, and details.
+After this, running `map_to_png.py` with `--overlay-card` will automatically use the high-quality SVG rendering, preserving all gradients, styling, and details.
 
 **Note**: On macOS with Homebrew, you need to run `fix_cairo.py` once to patch `cairocffi` so it can find the Cairo library in `/opt/homebrew/lib`. This is a one-time setup step.
 
@@ -46,7 +46,7 @@ The SVG file is always saved as `test_map_card.svg` for manual conversion if nee
 
 After installing Cairo, run:
 ```bash
-python3 map_to_svg.py --lat 52.3667 --lon 13.5033 --track 264.2 \
+python3 map_to_png.py --lat 52.3667 --lon 13.5033 --track 264.2 \
     --overlay-card --callsign "DLH456" --origin "BER" --destination "CDG" \
     --origin-country "Germany" --destination-country "France" \
     --altitude 37375 --speed 451.4

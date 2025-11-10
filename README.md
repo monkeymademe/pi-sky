@@ -23,7 +23,7 @@ flight_server.py (unified server)
             ↓
     web/index.html (web client - card-based layout)
 
-flight-maps_server.py (unified server with map support)
+flight_tracker_server.py (unified server with map support)
     ├── HTTP server (serves web interface)
     ├── WebSocket server (real-time updates)
     └── Flight data collection (from dump1090)
@@ -72,7 +72,7 @@ Configuration options:
 
 Run the unified server with interactive map support:
 ```bash
-python3 flight-maps_server.py
+python3 flight_tracker_server.py
 ```
 
 This starts:
@@ -147,7 +147,7 @@ The card-based interface provides:
 ## Files
 
 **Main Scripts:**
-- `flight-maps_server.py` - Unified server with map support (HTTP + WebSocket + data collection)
+- `flight_tracker_server.py` - Unified server with map support (HTTP + WebSocket + data collection)
 - `flight_server.py` - Unified server with card-based layout (HTTP + WebSocket + data collection)
 - `flight_tracker.py` - Terminal-only flight tracker
 
@@ -156,7 +156,7 @@ The card-based interface provides:
 - `airline_logos.py` - Airline logo/name lookup (OpenFlights database, Google favicon service)
 
 **Web Interface:**
-- `web/index-maps.html` - Map-based web interface (used by flight-maps_server.py)
+- `web/index-maps.html` - Map-based web interface (used by flight_tracker_server.py)
 - `web/index.html` - Card-based web interface (used by flight_server.py)
 
 **Configuration & Data:**
