@@ -5,7 +5,7 @@
     "hide_receiver": true,
     "show_test_flight": false,
     "http_host": "0.0.0.0",
-    "http_port": 8080,
+    "http_port": 5050,
     "websocket_host": "0.0.0.0",
     "websocket_port": 8765,
     "map_generation": {
