@@ -14,7 +14,7 @@ import threading
 import warnings
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from socketserver import TCPServer
+from socketserver import TCPServer, ThreadingMixIn
 from math import radians, sin, cos, sqrt, atan2
 import subprocess
 
@@ -23,7 +23,6 @@ os.environ['PYTHONWARNINGS'] = 'ignore:urllib3'
 warnings.filterwarnings('ignore', message='.*urllib3.*')
 
 import requests
-import websockets
 import subprocess
 
 from flight_info import get_flight_route, get_aircraft_info_adsblol, get_airport_coordinates, get_city_name_from_coordinates
@@ -38,14 +37,75 @@ except ImportError:
     print("⚠️  Warning: Inky display not available (display_inky.py not found)")
 
 # Global state
+sse_clients = set()
+sse_clients_lock = threading.Lock()
 flight_memory = {}
 latest_flight_data = None
-websocket_clients = set()
 last_map_generation_time = None  # Track when we last generated a map image
 last_map_flight_icao = None  # Track which flight we last generated a map for
 last_flight_detected_time = None  # Track when we last detected any flight
 map_generation_lock = threading.Lock()  # Lock to prevent concurrent map generation
 map_generation_in_progress = False  # Flag to track if map generation is currently running
+
+SSE_KEEPALIVE_INTERVAL = 15  # seconds between keep-alive comments
+
+
+class SSEClient:
+    """Thread-safe wrapper around an SSE client stream."""
+
+    def __init__(self, stream):
+        self.stream = stream
+        self.lock = threading.Lock()
+
+    def send(self, payload: bytes):
+        with self.lock:
+            self.stream.write(payload)
+            self.stream.flush()
+
+    def send_message(self, data):
+        message = f"data: {json.dumps(data)}\n\n".encode('utf-8')
+        self.send(message)
+
+    def send_comment(self, comment: str):
+        payload = f": {comment}\n\n".encode('utf-8')
+        self.send(payload)
+
+
+def register_sse_client(stream):
+    """Register a new SSE client and return current client count."""
+    client = SSEClient(stream)
+    with sse_clients_lock:
+        sse_clients.add(client)
+        count = len(sse_clients)
+    return client, count
+
+
+def unregister_sse_client(client):
+    """Unregister an SSE client and return remaining client count."""
+    with sse_clients_lock:
+        sse_clients.discard(client)
+        return len(sse_clients)
+
+
+def broadcast_sse(data):
+    """Broadcast JSON data to all SSE clients."""
+    with sse_clients_lock:
+        if not sse_clients:
+            return
+        clients = list(sse_clients)
+
+    stale_clients = []
+
+    for client in clients:
+        try:
+            client.send_message(data)
+        except Exception:
+            stale_clients.append(client)
+
+    if stale_clients:
+        with sse_clients_lock:
+            for client in stale_clients:
+                sse_clients.discard(client)
 
 def load_config():
     """Load configuration from config.json"""
@@ -927,59 +987,48 @@ def process_aircraft_data(aircraft_data):
         'flights': enriched_flights,
         'flight_count': len(enriched_flights)
     }
-
-# WebSocket handler
-async def handle_websocket(websocket):
-    """Handle WebSocket client connection"""
-    global websocket_clients
-    
-    websocket_clients.add(websocket)
-    print(f"WebSocket client connected. Total clients: {len(websocket_clients)}")
-    
-    # Send latest data immediately if available
-    if latest_flight_data:
-        try:
-            await websocket.send(json.dumps(latest_flight_data))
-        except websockets.exceptions.ConnectionClosed:
-            pass
-    
-    try:
-        # Keep connection alive - clients can send pings
-        async for message in websocket:
-            if message == 'ping':
-                await websocket.send('pong')
-    except websockets.exceptions.ConnectionClosed:
-        pass
-    finally:
-        websocket_clients.discard(websocket)
-        print(f"WebSocket client disconnected. Total clients: {len(websocket_clients)}")
-
-async def broadcast_flight_data(data):
-    """Broadcast flight data to all WebSocket clients"""
-    global websocket_clients
-    
-    if not websocket_clients:
-        return
-    
-    message = json.dumps(data)
-    disconnected = set()
-    
-    for client in websocket_clients:
-        try:
-            await client.send(message)
-        except websockets.exceptions.ConnectionClosed:
-            disconnected.add(client)
-        except Exception as e:
-            print(f"Error broadcasting to client: {e}")
-            disconnected.add(client)
-    
-    # Clean up disconnected clients
-    websocket_clients -= disconnected
-
 # HTTP server
 class FlightHTTPHandler(SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=os.path.join(os.path.dirname(__file__), 'web'), **kwargs)
+
+    def do_GET(self):
+        if self.path == '/events':
+            self.handle_sse()
+        else:
+            super().do_GET()
+
+    def handle_sse(self):
+        global latest_flight_data
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+
+        client_wrapper, client_count = register_sse_client(self.wfile)
+        self.close_connection = False
+        print(f"SSE client connected. Total clients: {client_count}")
+
+        try:
+            if latest_flight_data:
+                try:
+                    client_wrapper.send_message(latest_flight_data)
+                except Exception:
+                    return
+
+            while True:
+                time.sleep(SSE_KEEPALIVE_INTERVAL)
+                try:
+                    client_wrapper.send_comment('keep-alive')
+                except Exception:
+                    break
+        finally:
+            remaining = unregister_sse_client(client_wrapper)
+            print(f"SSE client disconnected. Total clients: {remaining}")
     
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -989,18 +1038,18 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
         # Suppress HTTP logs for cleaner output
         pass
 
+
+class ThreadingFlightHTTPServer(ThreadingMixIn, TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def run_http_server(host, port):
     """Run HTTP server in a separate thread"""
-    with TCPServer((host, port), FlightHTTPHandler) as httpd:
+    with ThreadingFlightHTTPServer((host, port), FlightHTTPHandler) as httpd:
         print(f"HTTP server running on http://{host}:{port}")
         print(f"Open http://{host}:{port}/index-maps.html in your browser")
         httpd.serve_forever()
-
-async def run_websocket_server(host, port):
-    """Run WebSocket server"""
-    async with websockets.serve(handle_websocket, host, port):
-        print(f"WebSocket server running on ws://{host}:{port}")
-        await asyncio.Future()  # Run forever
 
 async def flight_data_loop(config):
     """Main loop for collecting and broadcasting flight data"""
@@ -1021,10 +1070,7 @@ async def flight_data_loop(config):
             # Process and enrich flight data
             flight_update = process_aircraft_data(data)
             latest_flight_data = flight_update
-            
-            # Broadcast to WebSocket clients
-            if websocket_clients:
-                await broadcast_flight_data(flight_update)
+            broadcast_sse(flight_update)
         else:
             consecutive_errors += 1
             if consecutive_errors == max_errors:
@@ -1041,8 +1087,6 @@ async def main():
     
     http_host = config.get('http_host', '0.0.0.0')
     http_port = config.get('http_port', 8080)
-    ws_host = config.get('websocket_host', '0.0.0.0')
-    ws_port = config.get('websocket_port', 8765)
     
     print("=" * 70)
     print("Flight Tracker Server (with Maps)")
@@ -1067,11 +1111,10 @@ async def main():
     # Give HTTP server time to start
     await asyncio.sleep(0.5)
     
-    # Run WebSocket server and flight data loop concurrently
-    await asyncio.gather(
-        run_websocket_server(ws_host, ws_port),
-        flight_data_loop(config)
-    )
+    print(f"SSE endpoint available at http://{http_host}:{http_port}/events")
+
+    # Run flight data loop
+    await flight_data_loop(config)
 
 if __name__ == '__main__':
     try:
