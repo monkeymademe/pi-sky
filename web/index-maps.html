@@ -540,9 +540,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
-        const WS_HOST = window.location.hostname;
-        const WS_PORT = 8765;
-        const wsUrl = `ws://${WS_HOST}:${WS_PORT}`;
+        const EVENTS_URL = window.FLIGHT_TRACKER_EVENTS_URL || `${window.location.origin}/events`;
         
         let map = null;
         let receiverMarker = null;
@@ -552,10 +550,10 @@
         let mapInitialBoundsSet = false;
         let userHasInteracted = false;
         
-        let ws = null;
-        let reconnectTimeout = null;
-        let reconnectAttempts = 0;
-        const maxReconnectAttempts = 10;
+        let eventSource = null;
+        let reconnectTimer = null;
+        let reconnectDelay = 1000;
+        const MAX_RECONNECT_DELAY = 30000;
         
         // Initialize map
         function initMap(centerLat, centerLon, hideReceiver = false) {
@@ -634,17 +632,16 @@
             console.log('Map initialized at:', centerLat, centerLon);
         }
         
-        function updateConnectionStatus(connected) {
+        function updateConnectionStatus(connected, message) {
             const indicator = document.getElementById('statusIndicator');
             const status = document.getElementById('connectionStatus');
             
             if (connected) {
                 indicator.className = 'status-indicator connected';
-                status.textContent = 'Connected';
-                reconnectAttempts = 0;
+                status.textContent = message || 'Connected';
             } else {
                 indicator.className = 'status-indicator disconnected';
-                status.textContent = 'Disconnected';
+                status.textContent = message || 'Disconnected';
             }
         }
         
@@ -1420,76 +1417,77 @@
             });
         }
         
-        function connect() {
+        function scheduleReconnect() {
+            if (reconnectTimer) {
+                return;
+            }
+            
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                connectToEventStream();
+            }, reconnectDelay);
+            
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+        }
+        
+        function connectToEventStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            updateConnectionStatus(false, 'Connecting...');
+            
             try {
-                ws = new WebSocket(wsUrl);
+                eventSource = new EventSource(EVENTS_URL);
                 
-                ws.onopen = () => {
-                    console.log('WebSocket connected');
+                eventSource.onopen = () => {
+                    console.log('SSE connected');
                     updateConnectionStatus(true);
+                    reconnectDelay = 1000;
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
                 };
                 
-                ws.onmessage = (event) => {
+                eventSource.onmessage = (event) => {
                     try {
-                        // Handle pong responses (plain string, not JSON)
-                        if (event.data === 'pong') {
-                            return;
-                        }
-                        
                         const data = JSON.parse(event.data);
                         if (data.type === 'flight_update') {
                             updateFlights(data.flights || [], data.stats || {});
                         }
                     } catch (e) {
-                        console.error('Error parsing message:', e);
+                        console.error('Error parsing SSE message:', e);
                     }
                 };
                 
-                ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    updateConnectionStatus(false);
-                };
-                
-                ws.onclose = () => {
-                    console.log('WebSocket disconnected');
-                    updateConnectionStatus(false);
-                    attemptReconnect();
+                eventSource.onerror = (error) => {
+                    console.error('SSE error:', error);
+                    updateConnectionStatus(false, 'Disconnected (retrying...)');
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    scheduleReconnect();
                 };
             } catch (e) {
-                console.error('Error connecting:', e);
-                updateConnectionStatus(false);
-                attemptReconnect();
+                console.error('Error connecting to SSE endpoint:', e);
+                updateConnectionStatus(false, 'Connection error');
+                scheduleReconnect();
             }
         }
         
-        function attemptReconnect() {
-            if (reconnectAttempts >= maxReconnectAttempts) {
-                console.error('Max reconnection attempts reached');
-                return;
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
             }
-            
-            reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-            
-            console.log(`Reconnecting in ${delay/1000} seconds... (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
-            
-            reconnectTimeout = setTimeout(() => {
-                connect();
-            }, delay);
-        }
-        
-        // Don't initialize map immediately - wait for first data update
-        // This prevents duplicate markers from being created
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+            }
+        });
         
         // Initial connection
-        connect();
-        
-        // Keep connection alive with ping
-        setInterval(() => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send('ping');
-            }
-        }, 30000);
+        connectToEventStream();
     </script>
 </body>
 </html>
