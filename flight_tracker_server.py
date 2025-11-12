@@ -968,6 +968,10 @@ def process_aircraft_data(aircraft_data):
     stats['receiver_lat'] = config.get('receiver_lat')
     stats['receiver_lon'] = config.get('receiver_lon')
     stats['hide_receiver'] = config.get('hide_receiver', False)
+    clear_skies_config = config.get('clear_skies', {})
+    stats['nearest_airport'] = clear_skies_config.get('nearest_airport')
+    stats['nearest_airport_lat'] = clear_skies_config.get('airport_lat')
+    stats['nearest_airport_lon'] = clear_skies_config.get('airport_lon')
     
     # Check if we should generate a map image
     should_gen, best_flight = should_generate_map(enriched_flights, config)

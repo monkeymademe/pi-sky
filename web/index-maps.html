@@ -78,6 +78,36 @@
             font-size: 2em;
         }
         
+        .nav-links {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #4b5563;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.6);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-links a:hover {
+            background: #ede9fe;
+            color: #4c1d95;
+            box-shadow: 0 4px 8px rgba(76, 29, 149, 0.15);
+        }
+
+        .nav-links a.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
+        }
+
         .status {
             display: flex;
             gap: 20px;
@@ -147,6 +177,11 @@
         .flights-panel {
             overflow-y: auto;
             max-height: calc(100vh - 200px);
+            scrollbar-width: none; /* Firefox */
+        }
+
+        .flights-panel::-webkit-scrollbar {
+            display: none; /* Chrome, Safari */
         }
         
         .flights-grid {
@@ -499,8 +534,12 @@
     <div class="container">
         <div class="header">
             <div>
-                <h1>✈️ Flight Tracker - Live Map</h1>
+                <h1>✈️ Flight Map</h1>
                 <div class="timestamp" id="lastUpdate">Waiting for data...</div>
+            </div>
+            <div class="nav-links">
+                <a href="index.html">Flight List</a>
+                <a href="index-maps.html" class="active">Flight Map</a>
             </div>
             <div class="status">
                 <div>
@@ -546,9 +585,11 @@
         let receiverMarker = null;
         let aircraftMarkers = {};
         let aircraftHeadingLines = {}; // Store heading lines for each aircraft
-        let selectedFlight = null;
-        let mapInitialBoundsSet = false;
-        let userHasInteracted = false;
+        let latestFlights = [];
+        let latestStats = {};
+        let followedFlightIcao = null;
+        let autoFitEnabled = true;
+        let lastAutoFitKey = null;
         
         let eventSource = null;
         let reconnectTimer = null;
@@ -590,7 +631,7 @@
             }
             
             // Set initial zoom level - zoom 11-12 shows more detail including airports
-            map = L.map('map').setView([centerLat, centerLon], 11);
+        map = L.map('map').setView([centerLat, centerLon], 11);
             
             // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -758,7 +799,7 @@
         }
         
         function createAircraftMarker(flight) {
-            if (!flight.lat || !flight.lon) return null;
+            if (flight.lat == null || flight.lon == null) return null;
             
             const status = flight.status || 'new';
             const color = status === 'new' ? '#10b981' : '#3b82f6';
@@ -879,7 +920,7 @@
                             <div style="font-weight: bold; color: #1f2937; font-family: monospace;">${flight.squawk}</div>
                         </div>
                         ` : ''}
-                        ${flight.lat !== null && flight.lat !== undefined && flight.lon !== null && flight.lon !== undefined ? `
+                        ${flight.lat != null && flight.lon != null ? `
                         <div style="grid-column: 1 / -1;">
                             <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Location</div>
                             <div style="font-weight: bold; color: #1f2937; font-family: monospace; font-size: 0.75em;">${formatCoordinates(flight.lat, flight.lon)}</div>
@@ -958,7 +999,7 @@
                 
                 // Function to update popup position
                 const updatePosition = () => {
-                    if (popupDiv.parentNode && marker && flight.lat && flight.lon) {
+                    if (popupDiv.parentNode && marker && flight.lat != null && flight.lon != null) {
                         // Get marker position in map container coordinates
                         const point = map.latLngToContainerPoint([flight.lat, flight.lon]);
                         
@@ -1029,13 +1070,8 @@
             
             // Create custom popup that bypasses Leaflet's wrapper completely
             marker.on('click', function() {
-                openMarkerPopup(marker, flight);
-                
-                // Center map and select flight
-                if (flight.lat && flight.lon) {
-                    map.setView([flight.lat, flight.lon], Math.max(map.getZoom(), 12));
-                }
-                selectFlight(flight.icao);
+                const currentFlight = marker._flightData || flight;
+                toggleFollowFlight(currentFlight);
             });
             
             return marker;
@@ -1063,38 +1099,232 @@
             });
         }
         
-        function updateMap(flights, stats) {
-            let mapJustInitialized = false;
-            
+        function refreshSelectionUI() {
+            document.querySelectorAll('.flight-card').forEach(card => {
+                if (followedFlightIcao && card.dataset.icao === followedFlightIcao) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+            });
+        }
+
+        function closeMarkerPopup(marker) {
+            if (!marker || !marker._customPopup) return;
+            const popupDiv = marker._customPopup;
+            if (map && popupDiv._updatePosition) {
+                map.off('move', popupDiv._updatePosition);
+                map.off('zoom', popupDiv._updatePosition);
+                map.off('moveend', popupDiv._updatePosition);
+            }
+            popupDiv.remove();
+            marker._customPopup = null;
+            if (window.activeCustomPopup === popupDiv) {
+                window.activeCustomPopup = null;
+            }
+        }
+
+        function focusOnFlight(flight, { initial = false } = {}) {
+            if (!flight || flight.lat == null || flight.lon == null) {
+                return;
+            }
+
             if (!map) {
-                // Initialize map with receiver position if available
-                const receiverLat = stats.receiver_lat || 52.40585;
-                const receiverLon = stats.receiver_lon || 13.55214;
+                const hideReceiver = latestStats.hide_receiver || false;
+                initMap(flight.lat, flight.lon, hideReceiver);
+            }
+
+            const currentZoom = map.getZoom();
+            const targetZoom = Math.max(initial ? 12 : currentZoom, 12);
+            map.flyTo([flight.lat, flight.lon], targetZoom, { animate: true, duration: 0.75 });
+        }
+
+        function computeAutoFitKey(flights, stats) {
+            const parts = flights
+                .filter(f => f.lat != null && f.lon != null)
+                .map(f => `${f.icao}:${f.lat.toFixed(3)},${f.lon.toFixed(3)}`)
+                .sort();
+
+            if (stats.receiver_lat != null && stats.receiver_lon != null && !stats.hide_receiver) {
+                parts.push(`R:${stats.receiver_lat.toFixed(3)},${stats.receiver_lon.toFixed(3)}`);
+            }
+
+            return parts.join('|');
+        }
+
+        function focusOnFallback(stats, { force = false } = {}) {
+            const airportLat = stats.nearest_airport_lat;
+            const airportLon = stats.nearest_airport_lon;
+            const receiverLat = stats.receiver_lat;
+            const receiverLon = stats.receiver_lon;
+
+            let targetLat = null;
+            let targetLon = null;
+            let zoom = 11;
+
+            if (airportLat != null && airportLon != null) {
+                targetLat = airportLat;
+                targetLon = airportLon;
+            } else if (receiverLat != null && receiverLon != null) {
+                targetLat = receiverLat;
+                targetLon = receiverLon;
+            } else {
+                targetLat = 52.40585;
+                targetLon = 13.55214;
+            }
+
+            if (!map) {
                 const hideReceiver = stats.hide_receiver || false;
-                initMap(receiverLat, receiverLon, hideReceiver);
-                mapJustInitialized = true;
-                // After initMap, receiverMarker should be created, so skip the creation below
+                initMap(targetLat, targetLon, hideReceiver);
+                map.setView([targetLat, targetLon], zoom);
+                return;
             }
-            
-            // Always cleanup duplicate receiver markers
+
+            if (force) {
+                map.setView([targetLat, targetLon], zoom);
+            }
+        }
+
+        function centerOnAllFlights(flights, stats, { force = false } = {}) {
+            const flightsWithPosition = flights.filter(f => f.lat != null && f.lon != null);
+
+            if (flightsWithPosition.length === 0) {
+                lastAutoFitKey = null;
+                focusOnFallback(stats, { force: true });
+                return;
+            }
+
+            if (!map) {
+                const hideReceiver = stats.hide_receiver || false;
+                const first = flightsWithPosition[0];
+                initMap(first.lat, first.lon, hideReceiver);
+            }
+
+            const key = computeAutoFitKey(flightsWithPosition, stats);
+            if (!force && key === lastAutoFitKey) {
+                return;
+            }
+
+            if (!force && map) {
+                const currentBounds = map.getBounds();
+                const innerBounds = currentBounds.pad(-0.08); // leave a small margin
+                const allFlightsVisible = flightsWithPosition.every(flight =>
+                    innerBounds.contains([flight.lat, flight.lon])
+                );
+                const receiverVisible = stats.hide_receiver ||
+                    (stats.receiver_lat != null &&
+                     stats.receiver_lon != null &&
+                     innerBounds.contains([stats.receiver_lat, stats.receiver_lon]));
+
+                if (allFlightsVisible && receiverVisible) {
+                    lastAutoFitKey = key;
+                    return;
+                }
+            }
+
+            let bounds = L.latLngBounds(
+                flightsWithPosition.map(f => [f.lat, f.lon])
+            );
+
+            if (stats.receiver_lat != null && stats.receiver_lon != null && !stats.hide_receiver) {
+                bounds.extend([stats.receiver_lat, stats.receiver_lon]);
+            }
+
+            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
+            lastAutoFitKey = key;
+        }
+
+        function handleViewport(flights, stats) {
+            const flightsWithPosition = flights.filter(f => f.lat != null && f.lon != null);
+
+            if (followedFlightIcao) {
+                const followedFlight = flightsWithPosition.find(f => f.icao === followedFlightIcao);
+                if (followedFlight) {
+                    focusOnFlight(followedFlight);
+                    const marker = aircraftMarkers[followedFlightIcao];
+                    if (marker && marker.openCustomPopup && (!marker._customPopup || !marker._customPopup.parentNode)) {
+                        setTimeout(() => {
+                            if (marker.openCustomPopup) {
+                                marker.openCustomPopup();
+                            }
+                        }, 50);
+                    }
+                } else {
+                    const marker = aircraftMarkers[followedFlightIcao];
+                    closeMarkerPopup(marker);
+                    followedFlightIcao = null;
+                    autoFitEnabled = true;
+                    lastAutoFitKey = null;
+                    refreshSelectionUI();
+                    centerOnAllFlights(flightsWithPosition, stats, { force: true });
+                }
+                return;
+            }
+
+            if (autoFitEnabled) {
+                centerOnAllFlights(flightsWithPosition, stats);
+            }
+        }
+
+        function toggleFollowFlight(flight) {
+            if (!flight || flight.lat === undefined || flight.lon === undefined) {
+                return;
+            }
+
+            if (followedFlightIcao === flight.icao) {
+                const marker = aircraftMarkers[flight.icao];
+                closeMarkerPopup(marker);
+                followedFlightIcao = null;
+                autoFitEnabled = true;
+                lastAutoFitKey = null;
+                refreshSelectionUI();
+                centerOnAllFlights(latestFlights, latestStats, { force: true });
+            } else {
+                if (followedFlightIcao && aircraftMarkers[followedFlightIcao]) {
+                    closeMarkerPopup(aircraftMarkers[followedFlightIcao]);
+                }
+                followedFlightIcao = flight.icao;
+                autoFitEnabled = false;
+                refreshSelectionUI();
+                focusOnFlight(flight, { initial: true });
+                const activeCard = document.querySelector(`[data-icao="${flight.icao}"]`);
+                if (activeCard) {
+                    activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                const marker = aircraftMarkers[flight.icao];
+                if (marker && marker.openCustomPopup) {
+                    setTimeout(() => {
+                        if (marker.openCustomPopup) {
+                            marker.openCustomPopup();
+                        }
+                    }, 100);
+                }
+            }
+        }
+
+        function updateMap(flights, stats) {
+            latestFlights = flights;
+            latestStats = stats;
+
+            if (!map) {
+                const initialLat = stats.receiver_lat ?? stats.nearest_airport_lat ?? 52.40585;
+                const initialLon = stats.receiver_lon ?? stats.nearest_airport_lon ?? 13.55214;
+                const hideReceiver = stats.hide_receiver || false;
+                initMap(initialLat, initialLon, hideReceiver);
+            }
+
             cleanupReceiverMarkers();
-            
-            // Track if user has interacted with map (moved, zoomed, etc.)
-            if (!userHasInteracted && map) {
-                map.on('moveend', () => { userHasInteracted = true; });
-                map.on('zoomend', () => { userHasInteracted = true; });
-                map.on('dragend', () => { userHasInteracted = true; });
-            }
-            
-            // Update receiver marker position if it changed (only if marker exists and is on map)
-            // Skip if map was just initialized (initMap already created the marker)
-            // Check hide_receiver setting
-            if (map && !mapJustInitialized && stats.receiver_lat && stats.receiver_lon && !stats.hide_receiver) {
+
+            if (map && stats.hide_receiver) {
                 if (receiverMarker && map.hasLayer(receiverMarker)) {
-                    // Marker exists, just update position
+                    closeMarkerPopup(receiverMarker);
+                    map.removeLayer(receiverMarker);
+                }
+                receiverMarker = null;
+            } else if (map && stats.receiver_lat && stats.receiver_lon) {
+                if (receiverMarker && map.hasLayer(receiverMarker)) {
                     receiverMarker.setLatLng([stats.receiver_lat, stats.receiver_lon]);
-                } else if (!receiverMarker) {
-                    // Create receiver marker if it doesn't exist (fallback case)
+                } else {
                     receiverMarker = L.marker([stats.receiver_lat, stats.receiver_lon], {
                         icon: L.divIcon({
                             className: 'receiver-marker',
@@ -1104,10 +1334,6 @@
                     }).addTo(map);
                     receiverMarker.bindPopup('<b>Receiver Location</b><br>Your ADS-B receiver');
                 }
-            } else if (stats.hide_receiver && receiverMarker && map.hasLayer(receiverMarker)) {
-                // Hide receiver marker if hide_receiver is true
-                map.removeLayer(receiverMarker);
-                receiverMarker = null;
             }
             
             // Helper function to calculate endpoint of heading line
@@ -1140,7 +1366,7 @@
             const currentIcaos = new Set();
             
             flights.forEach(flight => {
-                if (flight.lat && flight.lon) {
+                if (flight.lat != null && flight.lon != null) {
                     currentIcaos.add(flight.icao);
                     
                     // Get heading/track for line drawing
@@ -1239,6 +1465,7 @@
             Object.keys(aircraftMarkers).forEach(icao => {
                 if (!currentIcaos.has(icao)) {
                     const marker = aircraftMarkers[icao];
+                    closeMarkerPopup(marker);
                     if (map.hasLayer(marker)) {
                         map.removeLayer(marker);
                     }
@@ -1254,22 +1481,7 @@
                 }
             });
             
-            // Only auto-fit bounds on first load or if user hasn't interacted
-            if (!mapInitialBoundsSet && flights.length > 0 && flights.some(f => f.lat && f.lon)) {
-                const bounds = L.latLngBounds(
-                    flights
-                        .filter(f => f.lat && f.lon)
-                        .map(f => [f.lat, f.lon])
-                );
-                
-                // Add receiver to bounds if available
-                if (stats.receiver_lat && stats.receiver_lon) {
-                    bounds.extend([stats.receiver_lat, stats.receiver_lon]);
-                }
-                
-                map.fitBounds(bounds, { padding: [50, 50] });
-                mapInitialBoundsSet = true;
-            }
+            handleViewport(flights, stats);
         }
         
         function createFlightCard(flight) {
@@ -1348,41 +1560,16 @@
             
             // Add click handler
             card.addEventListener('click', () => {
-                if (flight.lat && flight.lon && map) {
-                    // Center on the flight
-                    map.setView([flight.lat, flight.lon], Math.max(map.getZoom(), 12));
-                    
-                    // Open the custom popup if marker exists
-                    if (aircraftMarkers[flight.icao] && aircraftMarkers[flight.icao].openCustomPopup) {
-                        // Small delay to ensure map has finished centering
-                        setTimeout(() => {
-                            aircraftMarkers[flight.icao].openCustomPopup();
-                        }, 100);
-                    }
-                }
-                selectFlight(flight.icao);
+                toggleFollowFlight(flight);
             });
             
             return card;
         }
         
-        function selectFlight(icao) {
-            // Remove previous selection
-            document.querySelectorAll('.flight-card').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            // Add selection to clicked card
-            const card = document.querySelector(`[data-icao="${icao}"]`);
-            if (card) {
-                card.classList.add('selected');
-                card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-            
-            selectedFlight = icao;
-        }
-        
         function updateFlights(flights, stats) {
+            latestFlights = flights;
+            latestStats = stats;
+
             // Update stats
             document.getElementById('activeFlights').textContent = stats.active || 0;
             document.getElementById('totalFlights').textContent = stats.total || 0;
@@ -1408,6 +1595,7 @@
                         <p>Waiting for aircraft data...</p>
                     </div>
                 `;
+                refreshSelectionUI();
                 return;
             }
             
@@ -1415,6 +1603,8 @@
                 const card = createFlightCard(flight);
                 container.appendChild(card);
             });
+
+            refreshSelectionUI();
         }
         
         function scheduleReconnect() {

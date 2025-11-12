@@ -41,6 +41,36 @@
             font-size: 2em;
         }
         
+        .nav-links {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #4b5563;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.6);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .nav-links a:hover {
+            background: #ede9fe;
+            color: #4c1d95;
+            box-shadow: 0 4px 8px rgba(76, 29, 149, 0.15);
+        }
+
+        .nav-links a.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
+        }
+
         .status {
             display: flex;
             gap: 20px;
@@ -417,8 +447,12 @@
     <div class="container">
         <div class="header">
             <div>
-                <h1>✈️ Flight Tracker</h1>
+                <h1>✈️ Flight List</h1>
                 <div class="timestamp" id="lastUpdate">Waiting for data...</div>
+            </div>
+            <div class="nav-links">
+                <a href="index.html" class="active">Flight List</a>
+                <a href="index-maps.html">Flight Map</a>
             </div>
             <div class="status">
                 <div>
