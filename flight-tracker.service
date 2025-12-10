@@ -1,0 +1,23 @@
+[Unit]
+Description=Flight Tracker Server
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/berrybase_demos/flightaware_demo
+Environment="PATH=/home/pi/flightaware-venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/pi/flightaware-venv/bin/python /home/pi/berrybase_demos/flightaware_demo/flight_tracker_server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
