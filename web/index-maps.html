@@ -10,6 +10,48 @@
         
         <!-- Custom styles loaded AFTER Leaflet to override defaults -->
         <style>
+            :root {
+                --bg-gradient-start: #3e91be;
+                --bg-gradient-end: #cd3c65;
+                --bg-color: #f8f8f8;
+                --card-bg: white;
+                --text-primary: #333;
+                --text-secondary: #666;
+                --text-muted: #999;
+                --text-white: white;
+                --border-color: #f0f0f0;
+                --accent-color: #3e91be;
+                --accent-gradient: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
+                --header-bg: white;
+                --nav-hover: rgba(62, 145, 190, 0.1);
+                --nav-active-bg: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
+                --card-header-bg: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
+                --card-footer-bg: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+                --route-color: #3e91be;
+                --selected-bg: #f3f4f6;
+            }
+
+            [data-theme="dark"] {
+                --bg-gradient-start: #6b6a6a;
+                --bg-gradient-end: #cd3c65;
+                --bg-color: #0f1419;
+                --card-bg: #1a1f2e;
+                --text-primary: #e0e0e0;
+                --text-secondary: #b0b0b0;
+                --text-muted: #808080;
+                --text-white: #e0e0e0;
+                --border-color: #2a2f3e;
+                --accent-color: #5ba8d1;
+                --accent-gradient: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
+                --header-bg: #1a1f2e;
+                --nav-hover: rgba(91, 168, 209, 0.2);
+                --nav-active-bg: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
+                --card-header-bg: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
+                --card-footer-bg: linear-gradient(135deg, #2a2f3e 0%, #1f2532 100%);
+                --route-color: #5ba8d1;
+                --selected-bg: #2a2f3e;
+            }
+
             /* Custom flight popup - completely bypasses Leaflet's popup system */
             .custom-flight-popup {
                 padding: 0 !important;
@@ -50,10 +92,11 @@
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            color: var(--text-primary);
             min-height: 100vh;
             padding: 20px;
+            transition: background 0.3s ease, color 0.3s ease;
         }
         
         .container {
@@ -62,20 +105,22 @@
         }
         
         .header {
-            background: white;
+            background: var(--header-bg);
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
+            transition: background 0.3s ease;
         }
         
         .header h1 {
-            color: #667eea;
+            color: var(--accent-color);
             font-size: 2em;
+            transition: color 0.3s ease;
         }
         
         .nav-links {
@@ -87,7 +132,7 @@
 
         .nav-links a {
             text-decoration: none;
-            color: #4b5563;
+            color: var(--text-secondary);
             font-weight: 600;
             padding: 8px 16px;
             border-radius: 999px;
@@ -96,16 +141,20 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
+        [data-theme="dark"] .nav-links a {
+            background: rgba(26, 31, 46, 0.6);
+        }
+
         .nav-links a:hover {
-            background: #ede9fe;
-            color: #4c1d95;
-            box-shadow: 0 4px 8px rgba(76, 29, 149, 0.15);
+            background: var(--nav-hover);
+            color: var(--accent-color);
+            box-shadow: 0 4px 8px rgba(62, 145, 190, 0.15);
         }
 
         .nav-links a.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #fff;
-            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
+            background: var(--nav-active-bg);
+            color: var(--text-white);
+            box-shadow: 0 6px 12px rgba(62, 145, 190, 0.3);
         }
 
         .status {
@@ -144,12 +193,14 @@
         .stat-value {
             font-size: 1.5em;
             font-weight: bold;
-            color: #667eea;
+            color: var(--accent-color);
+            transition: color 0.3s ease;
         }
         
         .stat-label {
-            color: #666;
+            color: var(--text-secondary);
             font-size: 0.85em;
+            transition: color 0.3s ease;
         }
         
         .main-content {
@@ -159,12 +210,13 @@
         }
         
         .map-container {
-            background: white;
+            background: var(--card-bg);
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             overflow: hidden;
             height: calc(100vh - 200px);
             min-height: 600px;
+            transition: background 0.3s ease;
         }
         
         #map {
@@ -191,11 +243,11 @@
         }
         
         .flight-card {
-            background: white;
+            background: var(--card-bg);
             border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
             cursor: pointer;
             display: grid;
             grid-template-rows: auto 1fr auto;
@@ -205,7 +257,7 @@
         
         .flight-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
         }
         
         .flight-card.new {
@@ -217,14 +269,14 @@
         }
         
         .flight-card.selected {
-            background: #f3f4f6;
-            box-shadow: 0 8px 16px rgba(124, 58, 237, 0.2);
+            background: var(--selected-bg);
+            box-shadow: 0 8px 16px rgba(62, 145, 190, 0.3);
         }
         
         /* Boarding pass style header */
         .flight-card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--card-header-bg);
+            color: var(--text-white);
             padding: 12px 20px;
             display: flex;
             justify-content: space-between;
@@ -258,11 +310,12 @@
         .flight-card-route {
             padding: 24px 20px;
             position: relative;
-            background: white;
+            background: var(--card-bg);
             display: grid;
             grid-template-columns: 1fr auto 1fr;
             gap: 16px;
             align-items: center;
+            transition: background 0.3s ease;
         }
         
         .route-section {
@@ -273,24 +326,27 @@
         .route-section-label {
             font-size: 0.7em;
             text-transform: uppercase;
-            color: #9ca3af;
+            color: var(--text-muted);
             letter-spacing: 0.5px;
             margin-bottom: 8px;
+            transition: color 0.3s ease;
         }
         
         .route-airport-code {
             font-size: 2em;
             font-weight: bold;
-            color: #667eea;
+            color: var(--route-color);
             margin-bottom: 4px;
+            transition: color 0.3s ease;
         }
         
         .route-country-info {
             font-size: 0.85em;
-            color: #6b7280;
+            color: var(--text-secondary);
             display: flex;
             align-items: center;
             gap: 4px;
+            transition: color 0.3s ease;
         }
         
         .route-plane-container {
@@ -306,8 +362,8 @@
             position: absolute;
             width: 100%;
             height: 2px;
-            background: linear-gradient(to right, #667eea 0%, transparent 50%, #667eea 100%);
-            border-top: 1px dashed #c7d2fe;
+            background: linear-gradient(to right, var(--route-color) 0%, transparent 50%, var(--route-color) 100%);
+            border-top: 1px dashed rgba(62, 145, 190, 0.3);
         }
         
         .route-plane-icon {
@@ -315,19 +371,21 @@
             height: 48px;
             position: relative;
             z-index: 1;
-            background: white;
+            background: var(--card-bg);
             padding: 4px;
+            transition: background 0.3s ease;
         }
         
         /* Footer with flight details */
         .flight-card-footer {
-            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            background: var(--card-footer-bg);
             padding: 16px 20px;
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
             gap: 16px;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid var(--border-color);
             font-size: 16px;
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
         
         .flight-detail-item {
@@ -338,15 +396,17 @@
         .flight-detail-label {
             font-size: 0.7em;
             text-transform: uppercase;
-            color: #6b7280;
+            color: var(--text-secondary);
             letter-spacing: 0.5px;
             margin-bottom: 4px;
+            transition: color 0.3s ease;
         }
         
         .flight-detail-value {
             font-size: 1em;
             font-weight: bold;
-            color: #1f2937;
+            color: var(--text-primary);
+            transition: color 0.3s ease;
         }
         
         .flight-detail-value[style*="monospace"] {
@@ -473,25 +533,56 @@
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            background: white;
+            background: var(--card-bg);
             border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             width: 100%;
+            transition: background 0.3s ease;
         }
         
         .empty-state h2 {
-            color: #667eea;
+            color: var(--accent-color);
             margin-bottom: 10px;
+            transition: color 0.3s ease;
         }
         
         .empty-state p {
-            color: #666;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
         }
         
         .timestamp {
             font-size: 0.85em;
-            color: #666;
+            color: var(--text-secondary);
             margin-top: 5px;
+            transition: color 0.3s ease;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: transparent;
+            border: none;
+            padding: 0;
+            width: auto;
+            height: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            opacity: 0.7;
+        }
+
+        .theme-toggle svg {
+            width: 28px;
+            height: 28px;
+            fill: white;
         }
         
         /* Custom marker styles */
@@ -531,6 +622,12 @@
     </style>
 </head>
 <body>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+        <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
+        </svg>
+    </button>
+
     <div class="container">
         <div class="header">
             <div>
@@ -852,17 +949,26 @@
                     ? `<img src="${flight.airline_logo}" alt="${flight.airline_code || 'Airline'}" style="width: 24px; height: 24px; object-fit: contain; border-radius: 3px; background: rgba(255,255,255,0.2); padding: 2px;" onerror="this.style.display='none'">`
                     : '';
                 
-                // Purple plane SVG icon for the popup
+                // Get theme colors for popup
+                const routeColor = getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3e91be';
                 const planeIcon = `
                     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 28px; height: 28px;">
-                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#667eea"/>
+                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${routeColor}"/>
                     </svg>
                 `;
+                
+                const cardHeaderBg = getComputedStyle(document.documentElement).getPropertyValue('--card-header-bg').trim() || 'linear-gradient(135deg, #3e91be 0%, #cd3c65 100%)';
+                const textWhite = getComputedStyle(document.documentElement).getPropertyValue('--text-white').trim() || 'white';
+                const cardBg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || 'white';
+                const textPrimary = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#333';
+                const textSecondary = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#666';
+                const cardFooterBg = getComputedStyle(document.documentElement).getPropertyValue('--card-footer-bg').trim() || 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)';
+                const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-color').trim() || '#e5e7eb';
                 
                 return `
                 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
                     <!-- Header -->
-                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; position: relative;">
+                    <div style="background: ${cardHeaderBg}; color: ${textWhite}; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; position: relative;">
                         <div>
                             <div style="font-size: 1.1em; font-weight: bold;">${flight.callsign || 'N/A'}</div>
                             <div style="font-size: 0.7em; opacity: 0.9; font-family: monospace; margin-top: 3px;">${flight.icao}</div>
@@ -871,66 +977,66 @@
                     </div>
                     
                     <!-- Route Section -->
-                    <div style="padding: 16px 14px; background: white; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center;">
+                    <div style="padding: 16px 14px; background: ${cardBg}; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center;">
                         <div>
-                            <div style="font-size: 0.65em; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.5px; margin-bottom: 6px;">From</div>
-                            <div style="font-size: 1.5em; font-weight: bold; color: #667eea; margin-bottom: 4px;">${originCode}</div>
-                            ${originCountry ? `<div style="font-size: 0.75em; color: #6b7280;">${originCountry}</div>` : ''}
+                            <div style="font-size: 0.65em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 6px;">From</div>
+                            <div style="font-size: 1.5em; font-weight: bold; color: ${routeColor}; margin-bottom: 4px;">${originCode}</div>
+                            ${originCountry ? `<div style="font-size: 0.75em; color: ${textSecondary};">${originCountry}</div>` : ''}
                         </div>
                         <div style="position: relative; padding: 0 6px; display: flex; align-items: center; justify-content: center;">
-                            <div style="position: absolute; left: 0; right: 0; height: 1px; border-top: 1px dashed #c7d2fe; top: 50%;"></div>
-                            <div style="position: relative; z-index: 1; background: white; padding: 4px;">${planeIcon}</div>
+                            <div style="position: absolute; left: 0; right: 0; height: 1px; border-top: 1px dashed rgba(62, 145, 190, 0.3); top: 50%;"></div>
+                            <div style="position: relative; z-index: 1; background: ${cardBg}; padding: 4px;">${planeIcon}</div>
                         </div>
                         <div style="text-align: right;">
-                            <div style="font-size: 0.65em; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.5px; margin-bottom: 6px;">To</div>
-                            <div style="font-size: 1.5em; font-weight: bold; color: #667eea; margin-bottom: 4px;">${destCode}</div>
-                            ${destCountry ? `<div style="font-size: 0.75em; color: #6b7280; display: flex; justify-content: flex-end;">${destCountry}</div>` : ''}
+                            <div style="font-size: 0.65em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 6px;">To</div>
+                            <div style="font-size: 1.5em; font-weight: bold; color: ${routeColor}; margin-bottom: 4px;">${destCode}</div>
+                            ${destCountry ? `<div style="font-size: 0.75em; color: ${textSecondary}; display: flex; justify-content: flex-end;">${destCountry}</div>` : ''}
                         </div>
                     </div>
                     
                     <!-- Footer -->
-                    <div style="background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); padding: 12px 14px; border-top: 1px solid #e5e7eb; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 0.8em;">
+                    <div style="background: ${cardFooterBg}; padding: 12px 14px; border-top: 1px solid ${borderColor}; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 0.8em;">
                         <div>
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Altitude</div>
-                            <div style="font-weight: bold; color: #1f2937;">${formatAltitude(flight.altitude)}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Altitude</div>
+                            <div style="font-weight: bold; color: ${textPrimary};">${formatAltitude(flight.altitude)}</div>
                         </div>
                         <div>
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Speed</div>
-                            <div style="font-weight: bold; color: #1f2937;">${formatSpeed(flight.speed)}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Speed</div>
+                            <div style="font-weight: bold; color: ${textPrimary};">${formatSpeed(flight.speed)}</div>
                         </div>
                         <div>
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Track</div>
-                            <div style="font-weight: bold; color: #1f2937;">${formatTrack(flight.track)}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Track</div>
+                            <div style="font-weight: bold; color: ${textPrimary};">${formatTrack(flight.track)}</div>
                         </div>
                         ${flight.vertical_rate !== null && flight.vertical_rate !== undefined ? `
                         <div>
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Vertical</div>
-                            <div style="font-weight: bold; color: #1f2937;">${formatVerticalRate(flight.vertical_rate)}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Vertical</div>
+                            <div style="font-weight: bold; color: ${textPrimary};">${formatVerticalRate(flight.vertical_rate)}</div>
                         </div>
                         ` : ''}
                         ${flight.distance !== null && flight.distance !== undefined ? `
                         <div>
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Distance</div>
-                            <div style="font-weight: bold; color: #1f2937;">${formatDistance(flight.distance)}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Distance</div>
+                            <div style="font-weight: bold; color: ${textPrimary};">${formatDistance(flight.distance)}</div>
                         </div>
                         ` : ''}
                         ${flight.squawk ? `
                         <div>
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Squawk</div>
-                            <div style="font-weight: bold; color: #1f2937; font-family: monospace;">${flight.squawk}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Squawk</div>
+                            <div style="font-weight: bold; color: ${textPrimary}; font-family: monospace;">${flight.squawk}</div>
                         </div>
                         ` : ''}
                         ${flight.lat != null && flight.lon != null ? `
                         <div style="grid-column: 1 / -1;">
-                            <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Location</div>
-                            <div style="font-weight: bold; color: #1f2937; font-family: monospace; font-size: 0.75em;">${formatCoordinates(flight.lat, flight.lon)}</div>
+                            <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Location</div>
+                            <div style="font-weight: bold; color: ${textPrimary}; font-family: monospace; font-size: 0.75em;">${formatCoordinates(flight.lat, flight.lon)}</div>
                         </div>
                         ` : ''}
                         ${flight.aircraft_model || flight.aircraft_type ? `
                         <div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
                             <div style="flex: 1;">
-                                <div style="font-size: 0.7em; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 4px;">Aircraft</div>
-                                <div style="font-weight: bold; color: #1f2937;">
+                                <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Aircraft</div>
+                                <div style="font-weight: bold; color: ${textPrimary};">
                                     ${flight.aircraft_model || flight.aircraft_type || 'N/A'}
                                     ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
                                 </div>
@@ -1502,10 +1608,11 @@
             const destCode = flight.destination || '---';
             const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
             
-            // Purple plane SVG icon
+            // Plane SVG icon with current theme color
+            const routeColor = getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3e91be';
             const planeIcon = `
                 <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#667eea"/>
+                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${routeColor}"/>
                 </svg>
             `;
             
@@ -1678,6 +1785,45 @@
         
         // Initial connection
         connectToEventStream();
+
+        // Dark mode toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            // Update toggle icon - show icon for the NEW theme
+            updateThemeIcon(newTheme);
+        }
+
+        // Update theme icon based on current theme
+        function updateThemeIcon(theme) {
+            const svg = document.getElementById('themeIcon');
+            if (!svg) return;
+            
+            if (theme === 'dark') {
+                // Show sun icon when dark mode is ON (clicking will switch to light)
+                svg.innerHTML = '<path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708"/>';
+            } else {
+                // Show moon-fill icon when light mode is ON (clicking will switch to dark)
+                svg.innerHTML = '<path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>';
+            }
+        }
+
+        // Initialize theme from localStorage
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+        });
     </script>
 </body>
 </html>
