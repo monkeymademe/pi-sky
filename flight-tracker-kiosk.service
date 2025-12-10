@@ -1,0 +1,23 @@
+[Unit]
+Description=Flight Tracker Kiosk Mode
+After=network.target flight-tracker.service
+Wants=flight-tracker.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/pi/.Xauthority"
+ExecStart=/home/pi/berrybase_demos/flightaware_demo/start_kiosk.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+
+[Install]
+WantedBy=graphical.target
+
