@@ -40,7 +40,7 @@ Thumbs.db
 *.log
 
 # Local config (keep template but not custom values with API keys)
-# config.json  # Uncomment if you want to ignore config changes
+config.json
 
 # Test data
 test_data/
