@@ -124,7 +124,17 @@ def load_config():
                 }
             return config
     except FileNotFoundError:
-        print("Error: config.json not found")
+        print("=" * 80)
+        print("ERROR: config.json not found")
+        print("=" * 80)
+        print("\nTo get started:")
+        print("  1. Copy config_template.json to config.json:")
+        print("     cp config_template.json config.json")
+        print("\n  2. Edit config.json with your settings:")
+        print("     - Update dump1090_url if your dump1090 is on a different host/port")
+        print("     - Set your receiver_lat and receiver_lon coordinates")
+        print("     - Adjust other settings as needed")
+        print("\n" + "=" * 80)
         sys.exit(1)
 
 def get_aircraft(dump1090_url):
@@ -1083,7 +1093,7 @@ async def flight_data_loop(config):
                 print("   (This message will only appear once)")
                 consecutive_errors = max_errors + 1  # Prevent repeated messages
         
-        await asyncio.sleep(5)  # Update every 5 seconds
+        await asyncio.sleep(1)  # Update every 1 second
 
 async def main():
     """Main async function"""
