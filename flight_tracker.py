@@ -202,8 +202,9 @@ def main():
                             flight_memory[icao]['missed_cycles'] = 0  # Reset counter
                             flight_memory[icao]['seen_cycles'] = flight_memory[icao].get('seen_cycles', 0) + 1
                             
-                            # Retry route lookup on 5th cycle if no route info yet (requires callsign)
-                            if flight_memory[icao]['seen_cycles'] == 5:
+                            # Retry route lookup on 20th cycle if no route info yet (requires callsign)
+                            # 20 cycles = 20 seconds since updates are every 1 second
+                            if flight_memory[icao]['seen_cycles'] == 20:
                                 if not flight_memory[icao].get('origin') and callsign and icao != 'Unknown':
                                     try:
                                         flight_memory[icao]['lookup_attempted'] = True

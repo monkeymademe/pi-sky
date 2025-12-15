@@ -47,6 +47,10 @@ last_flight_detected_time = None  # Track when we last detected any flight
 map_generation_lock = threading.Lock()  # Lock to prevent concurrent map generation
 map_generation_in_progress = False  # Flag to track if map generation is currently running
 
+# API call tracking
+api_call_tracker = {}  # Track API calls per ICAO: {icao: {'route_calls': count, 'aircraft_calls': count, 'first_call': timestamp, 'last_call': timestamp}}
+api_tracker_lock = threading.Lock()  # Lock for thread-safe access
+
 SSE_KEEPALIVE_INTERVAL = 15  # seconds between keep-alive comments
 
 
@@ -719,6 +723,15 @@ def process_aircraft_data(aircraft_data):
                     lat = ac.get('lat')
                     lon = ac.get('lon')
                     if lat and lon:
+                        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        # Track API call
+                        with api_tracker_lock:
+                            if icao not in api_call_tracker:
+                                api_call_tracker[icao] = {'route_calls': 0, 'aircraft_calls': 0, 'first_call': timestamp, 'last_call': timestamp}
+                            api_call_tracker[icao]['route_calls'] += 1
+                            api_call_tracker[icao]['last_call'] = timestamp
+                            call_count = api_call_tracker[icao]['route_calls']
+                        print(f"[{timestamp}] 🆕 NEW FLIGHT DETECTED: {callsign} (ICAO: {icao}) - Triggering route API lookup (call #{call_count} for this flight)")
                         route_info = get_flight_route(icao, callsign, lat, lon)
                         if route_info:
                             if route_info.get('error'):
@@ -762,6 +775,15 @@ def process_aircraft_data(aircraft_data):
             if icao != 'Unknown':
                 try:
                     flight_memory[icao]['aircraft_lookup_attempted'] = True
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    # Track API call
+                    with api_tracker_lock:
+                        if icao not in api_call_tracker:
+                            api_call_tracker[icao] = {'route_calls': 0, 'aircraft_calls': 0, 'first_call': timestamp, 'last_call': timestamp}
+                        api_call_tracker[icao]['aircraft_calls'] += 1
+                        api_call_tracker[icao]['last_call'] = timestamp
+                        call_count = api_call_tracker[icao]['aircraft_calls']
+                    print(f"[{timestamp}] 🆕 NEW FLIGHT DETECTED: {callsign} (ICAO: {icao}) - Triggering aircraft info API lookup (call #{call_count} for this flight)")
                     aircraft_info = get_aircraft_info_adsblol(icao)
                     if aircraft_info:
                         flight_memory[icao]['aircraft_model'] = aircraft_info.get('model')
@@ -785,7 +807,7 @@ def process_aircraft_data(aircraft_data):
             # Retry route lookup if:
             # 1. No route info yet AND we have callsign AND position data
             # 2. Previous lookup failed due to missing position AND we now have position
-            # 3. On 5th cycle as a retry mechanism
+            # 3. On 20th cycle as a retry mechanism (20 seconds since updates are every 1 second)
             needs_route_lookup = (
                 not flight_memory[icao].get('origin') and 
                 callsign and 
@@ -797,9 +819,19 @@ def process_aircraft_data(aircraft_data):
             prev_error = flight_memory[icao].get('lookup_error')
             had_no_position = (prev_error == 'No position data')
             
-            if needs_route_lookup and (had_no_position or flight_memory[icao]['seen_cycles'] == 5 or not flight_memory[icao].get('lookup_attempted')):
+            if needs_route_lookup and (had_no_position or flight_memory[icao]['seen_cycles'] == 20 or not flight_memory[icao].get('lookup_attempted')):
                 try:
                     flight_memory[icao]['lookup_attempted'] = True
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    # Track API call
+                    with api_tracker_lock:
+                        if icao not in api_call_tracker:
+                            api_call_tracker[icao] = {'route_calls': 0, 'aircraft_calls': 0, 'first_call': timestamp, 'last_call': timestamp}
+                        api_call_tracker[icao]['route_calls'] += 1
+                        api_call_tracker[icao]['last_call'] = timestamp
+                        call_count = api_call_tracker[icao]['route_calls']
+                    retry_reason = "retry (cycle 20)" if flight_memory[icao]['seen_cycles'] == 20 else ("retry (position now available)" if had_no_position else "retry (no previous attempt)")
+                    print(f"[{timestamp}] 🔄 RETRY ROUTE LOOKUP: {callsign} (ICAO: {icao}) - Reason: {retry_reason} (call #{call_count} for this flight)")
                     route_info = get_flight_route(icao, callsign, lat, lon)
                     if route_info:
                         if route_info.get('error'):
@@ -1092,6 +1124,29 @@ async def flight_data_loop(config):
                 print("   Check if dump1090 is running and the IP address is correct.")
                 print("   (This message will only appear once)")
                 consecutive_errors = max_errors + 1  # Prevent repeated messages
+        
+        # Print API call summary every 60 seconds
+        if not hasattr(flight_data_loop, '_last_summary_time'):
+            flight_data_loop._last_summary_time = time.time()
+        
+        current_time = time.time()
+        if current_time - flight_data_loop._last_summary_time >= 60:  # Every 60 seconds
+            flight_data_loop._last_summary_time = current_time
+            with api_tracker_lock:
+                if api_call_tracker:
+                    print("\n" + "=" * 80)
+                    print("📊 API CALL SUMMARY (last 60 seconds):")
+                    print("=" * 80)
+                    total_route_calls = sum(tracker['route_calls'] for tracker in api_call_tracker.values())
+                    total_aircraft_calls = sum(tracker['aircraft_calls'] for tracker in api_call_tracker.values())
+                    print(f"Total route API calls: {total_route_calls}")
+                    print(f"Total aircraft info API calls: {total_aircraft_calls}")
+                    print(f"Total unique flights tracked: {len(api_call_tracker)}")
+                    print("\nPer-flight breakdown:")
+                    for icao, tracker in sorted(api_call_tracker.items(), key=lambda x: x[1]['route_calls'] + x[1]['aircraft_calls'], reverse=True)[:10]:
+                        callsign = flight_memory.get(icao, {}).get('callsign', 'Unknown')
+                        print(f"  {callsign} ({icao}): {tracker['route_calls']} route calls, {tracker['aircraft_calls']} aircraft calls (first: {tracker['first_call']}, last: {tracker['last_call']})")
+                    print("=" * 80 + "\n")
         
         await asyncio.sleep(1)  # Update every 1 second
 

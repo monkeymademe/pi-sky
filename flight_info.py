@@ -9,6 +9,7 @@ import requests
 import sys
 import os
 import time
+from datetime import datetime
 
 # OpenFlights airport database URL and cache file
 OPENFLIGHTS_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
@@ -260,8 +261,10 @@ def get_city_name_from_coordinates(lat, lon):
 def get_current_position_adsblol(icao):
     """Get current aircraft position from adsb.lol by ICAO"""
     url = f"https://api.adsb.lol/v2/hex/{icao}"
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     try:
+        print(f"[{timestamp}] API CALL: get_current_position_adsblol - ICAO: {icao}")
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
@@ -271,9 +274,13 @@ def get_current_position_adsblol(icao):
                 lat = ac.get('lat')
                 lon = ac.get('lon')
                 if lat and lon:
+                    print(f"[{timestamp}] API SUCCESS: Position found for {icao}: {lat}, {lon}")
                     return {'lat': lat, 'lon': lon}
-    except:
-        pass
+            print(f"[{timestamp}] API WARNING: No position data for {icao}")
+        else:
+            print(f"[{timestamp}] API ERROR: Status {response.status_code} for {icao}")
+    except Exception as e:
+        print(f"[{timestamp}] API EXCEPTION: {icao} - {str(e)}")
     return None
 
 def get_aircraft_info_adsblol(icao):
@@ -287,8 +294,10 @@ def get_aircraft_info_adsblol(icao):
         dict with aircraft info: {'model': '...', 'type': '...', 'registration': '...'} or None
     """
     url = f"https://api.adsb.lol/v2/hex/{icao}"
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     try:
+        print(f"[{timestamp}] API CALL: get_aircraft_info_adsblol - ICAO: {icao}")
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             data = response.json()
@@ -322,9 +331,17 @@ def get_aircraft_info_adsblol(icao):
                     if 'manufacturer' in db:
                         result['manufacturer'] = db.get('manufacturer')
                 
-                return result if result else None
+                if result:
+                    print(f"[{timestamp}] API SUCCESS: Aircraft info found for {icao}: {result}")
+                    return result
+                else:
+                    print(f"[{timestamp}] API WARNING: No aircraft info for {icao}")
+            else:
+                print(f"[{timestamp}] API WARNING: No aircraft data in response for {icao}")
+        else:
+            print(f"[{timestamp}] API ERROR: Status {response.status_code} for {icao}")
     except Exception as e:
-        pass
+        print(f"[{timestamp}] API EXCEPTION: {icao} - {str(e)}")
     return None
 
 def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
@@ -361,8 +378,10 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
             "lng": lon
         }]
     }
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     try:
+        print(f"[{timestamp}] API CALL: get_flight_route_adsblol - Callsign: {callsign.strip()}, ICAO: {icao}, Position: {lat}, {lon}")
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             routes = response.json()
@@ -410,8 +429,13 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
                             result['origin_country'] = origin_country
                         if destination_country:
                             result['destination_country'] = destination_country
+                        print(f"[{timestamp}] API SUCCESS: Route found for {callsign.strip()}: {origin} → {destination}")
                         return result
+            print(f"[{timestamp}] API WARNING: No route found for {callsign.strip()}")
+        else:
+            print(f"[{timestamp}] API ERROR: Status {response.status_code} for {callsign.strip()}")
     except Exception as e:
+        print(f"[{timestamp}] API EXCEPTION: {callsign.strip()} - {str(e)}")
         # Return error info for debugging
         return {
             'origin': None,
