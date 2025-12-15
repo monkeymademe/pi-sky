@@ -56,3 +56,4 @@ echo ""
 echo "To disable auto-start on boot, run:"
 echo "  sudo systemctl disable $SERVICE_NAME"
 
+

@@ -1,11 +1,9 @@
 [Unit]
-Description=Flight Tracker Server
+Description=Flight Tracker Server (User Service)
 After=network.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
 WorkingDirectory=/home/pi/berrybase_demos/flightaware_demo
 Environment="HOME=/home/pi"
 Environment="USER=pi"
@@ -17,11 +15,6 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=false
-
 [Install]
-WantedBy=multi-user.target
-
+WantedBy=default.target
 
