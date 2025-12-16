@@ -935,7 +935,8 @@
             if (flight.lat == null || flight.lon == null) return null;
             
             const status = flight.status || 'new';
-            const color = status === 'new' ? '#10b981' : '#3b82f6';
+            // Use light gray for unidentified flights, otherwise use status-based colors
+            const color = status === 'unidentified' ? '#9ca3af' : (status === 'new' ? '#10b981' : '#3b82f6');
             
             // Get heading (direction nose is pointing) or track (direction of movement)
             // Heading is preferred as it shows where the plane is actually pointing
@@ -1006,7 +1007,7 @@
                     <!-- Header -->
                     <div style="background: ${cardHeaderBg}; color: ${textWhite}; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; position: relative;">
                         <div>
-                            <div style="font-size: 1.1em; font-weight: bold;">${flight.callsign || 'N/A'}</div>
+                            <div style="font-size: 1.1em; font-weight: bold;">${flight.callsign || 'Unidentified'}</div>
                             <div style="font-size: 0.7em; opacity: 0.9; font-family: monospace; margin-top: 3px;">${flight.icao}</div>
                         </div>
                         ${airlineLogoHtml ? `<div style="display: flex; align-items: center;">${airlineLogoHtml}</div>` : ''}
@@ -1507,9 +1508,29 @@
             // Update or create aircraft markers
             const currentIcaos = new Set();
             
+            // Debug: Count flights with/without position
+            const flightsWithPos = flights.filter(f => f.lat != null && f.lon != null);
+            const unidentifiedWithPos = flightsWithPos.filter(f => f.status === 'unidentified');
+            if (unidentifiedWithPos.length > 0) {
+                console.log(`🗺️ Map: ${flightsWithPos.length} flights with position, ${unidentifiedWithPos.length} unidentified with position`);
+            }
+            
             flights.forEach(flight => {
-                if (flight.lat != null && flight.lon != null) {
+                // Check if flight has position data
+                const hasPosition = flight.lat != null && flight.lon != null;
+                
+                // Debug: Log unidentified flights without position
+                if (flight.status === 'unidentified' && !hasPosition) {
+                    console.log(`⚠️ Unidentified flight ${flight.icao} has no position data (lat: ${flight.lat}, lon: ${flight.lon})`);
+                }
+                
+                if (hasPosition) {
                     currentIcaos.add(flight.icao);
+                    
+                    // Debug: Log unidentified flights being processed
+                    if (flight.status === 'unidentified' && Object.keys(aircraftMarkers).indexOf(flight.icao) < 2) {
+                        console.log(`🗺️ Processing unidentified flight: ${flight.icao} at ${flight.lat}, ${flight.lon}`);
+                    }
                     
                     // Get heading/track for line drawing
                     let angle = flight.heading !== null && flight.heading !== undefined ? flight.heading : 
@@ -1518,14 +1539,29 @@
                     if (aircraftMarkers[flight.icao]) {
                         // Update existing marker position and rotation
                         const existingMarker = aircraftMarkers[flight.icao];
-                        existingMarker.setLatLng([flight.lat, flight.lon]);
+                        const oldPos = existingMarker.getLatLng();
+                        const newPos = [flight.lat, flight.lon];
+                        
+                        // Check if position actually changed (more than 0.0001 degrees ~= 11 meters)
+                        const positionChanged = !oldPos || 
+                            Math.abs(oldPos.lat - newPos[0]) > 0.0001 || 
+                            Math.abs(oldPos.lng - newPos[1]) > 0.0001;
+                        
+                        if (positionChanged) {
+                            existingMarker.setLatLng(newPos);
+                            // Debug: log position updates (only for first few flights to avoid spam)
+                            if (Object.keys(aircraftMarkers).indexOf(flight.icao) < 3) {
+                                console.log(`Position update: ${flight.callsign || flight.icao} - ${newPos[0].toFixed(5)}, ${newPos[1].toFixed(5)}`);
+                            }
+                        }
                         
                         // Update flight data stored in marker (for popup updates)
                         existingMarker._flightData = flight;
                         
                         // Update the icon with new rotation if heading/track changed
                         const status = flight.status || 'new';
-                        const color = status === 'new' ? '#10b981' : '#3b82f6';
+                        // Use light gray for unidentified flights, otherwise use status-based colors
+                        const color = status === 'unidentified' ? '#9ca3af' : (status === 'new' ? '#10b981' : '#3b82f6');
                         const rotation = angle !== null ? angle : 0;
                         
                         const newIcon = L.divIcon({
@@ -1586,12 +1622,19 @@
                             marker.addTo(map);
                             aircraftMarkers[flight.icao] = marker;
                             
+                            // Debug: Log when unidentified marker is created
+                            if (flight.status === 'unidentified') {
+                                console.log(`✅ Created marker for unidentified flight: ${flight.icao} at ${flight.lat}, ${flight.lon}`);
+                            }
+                            
                             // Create heading line if we have heading/track data
+                            // Use light gray for unidentified flights
+                            const lineColor = (flight.status === 'unidentified') ? '#9ca3af' : '#ff0000';
                             if (angle !== null) {
                                 const endpoint = calculateHeadingEndpoint(flight.lat, flight.lon, angle, 5);
                                 const linePoints = [[flight.lat, flight.lon], endpoint];
                                 const headingLine = L.polyline(linePoints, {
-                                    color: '#ff0000',
+                                    color: lineColor,
                                     weight: 2,
                                     opacity: 0.7,
                                     dashArray: '5, 5'
@@ -1787,7 +1830,31 @@
                     try {
                         const data = JSON.parse(event.data);
                         if (data.type === 'flight_update') {
-                            updateFlights(data.flights || [], data.stats || {});
+                            const flights = data.flights || [];
+                            const stats = data.stats || {};
+                            
+                            // Debug: Log update info
+                            const flightsWithPos = flights.filter(f => f.lat != null && f.lon != null);
+                            const unidentifiedFlights = flights.filter(f => f.status === 'unidentified');
+                            const unidentifiedWithPos = unidentifiedFlights.filter(f => f.lat != null && f.lon != null);
+                            
+                            if (unidentifiedFlights.length > 0) {
+                                console.log(`🔄 SSE Update: ${flights.length} total flights, ${flightsWithPos.length} with position`);
+                                console.log(`   Unidentified: ${unidentifiedFlights.length} total, ${unidentifiedWithPos.length} with position`);
+                                if (unidentifiedFlights.length > 0 && unidentifiedWithPos.length === 0) {
+                                    console.log(`   ⚠️ WARNING: ${unidentifiedFlights.length} unidentified flights but NONE have position data!`);
+                                    unidentifiedFlights.slice(0, 3).forEach(f => {
+                                        console.log(`      - ${f.icao}: lat=${f.lat}, lon=${f.lon}, altitude=${f.altitude}, speed=${f.speed}`);
+                                    });
+                                }
+                            }
+                            
+                            if (flightsWithPos.length > 0) {
+                                const firstFlight = flightsWithPos[0];
+                                console.log(`🔄 SSE Update: First flight: ${firstFlight.callsign || firstFlight.icao} at ${firstFlight.lat?.toFixed(5)}, ${firstFlight.lon?.toFixed(5)}`);
+                            }
+                            
+                            updateFlights(flights, stats);
                         }
                     } catch (e) {
                         console.error('Error parsing SSE message:', e);

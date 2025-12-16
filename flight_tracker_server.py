@@ -638,11 +638,9 @@ def process_aircraft_data(aircraft_data):
     
     aircraft = aircraft_data.get('aircraft', [])
     
-    # Filter out aircraft without callsigns
-    aircraft_with_callsigns = [ac for ac in aircraft if ac.get('flight', '').strip()]
-    
+    # NO LONGER filtering out aircraft without callsigns - show ALL aircraft
     # Filter out stale data (seen > 60 seconds ago)
-    recent_aircraft = [ac for ac in aircraft_with_callsigns if ac.get('seen', 999) <= 60]
+    recent_aircraft = [ac for ac in aircraft if ac.get('seen', 999) <= 60]
     
     # Get receiver position once (cached for performance)
     config = load_config()
@@ -679,10 +677,13 @@ def process_aircraft_data(aircraft_data):
             except:
                 pass
         
+        # Determine if flight is unidentified (no callsign)
+        is_unidentified = not callsign or callsign == ''
+        
         # Create enriched flight data
         enriched = {
             'icao': icao,
-            'callsign': callsign,
+            'callsign': callsign if callsign else 'Unidentified',
             'altitude': ac.get('alt_baro') or ac.get('altitude'),
             'speed': ac.get('gs'),
             'track': ac.get('track'),
@@ -694,7 +695,8 @@ def process_aircraft_data(aircraft_data):
             'vertical_rate': ac.get('baro_rate'),  # Rate of climb/descent in ft/min
             'squawk': ac.get('squawk'),  # Transponder code
             'category': ac.get('category'),  # Aircraft category
-            'distance': distance  # Distance from receiver in km
+            'distance': distance,  # Distance from receiver in km
+            'unidentified': is_unidentified  # Flag for unidentified flights
         }
         
         # Add new flights or update existing ones
@@ -772,6 +774,7 @@ def process_aircraft_data(aircraft_data):
                         process_aircraft_data._route_exception_logged.add(icao)
             
             # Lookup aircraft information (model, type, registration) from adsb.lol
+            # This works for ALL flights, with or without callsigns
             if icao != 'Unknown':
                 try:
                     flight_memory[icao]['aircraft_lookup_attempted'] = True
@@ -783,7 +786,8 @@ def process_aircraft_data(aircraft_data):
                         api_call_tracker[icao]['aircraft_calls'] += 1
                         api_call_tracker[icao]['last_call'] = timestamp
                         call_count = api_call_tracker[icao]['aircraft_calls']
-                    print(f"[{timestamp}] 🆕 NEW FLIGHT DETECTED: {callsign} (ICAO: {icao}) - Triggering aircraft info API lookup (call #{call_count} for this flight)")
+                    display_name = callsign if callsign else 'Unidentified'
+                    print(f"[{timestamp}] 🆕 NEW FLIGHT DETECTED: {display_name} (ICAO: {icao}) - Triggering aircraft info API lookup (call #{call_count} for this flight)")
                     aircraft_info = get_aircraft_info_adsblol(icao)
                     if aircraft_info:
                         flight_memory[icao]['aircraft_model'] = aircraft_info.get('model')
@@ -871,7 +875,11 @@ def process_aircraft_data(aircraft_data):
         
         # Add memory data to enriched flight
         if icao in flight_memory:
-            enriched['status'] = 'saved' if flight_memory[icao].get('seen_cycles', 0) > 0 else 'new'
+            # Set status: unidentified takes priority, then saved/new based on cycles
+            if is_unidentified:
+                enriched['status'] = 'unidentified'
+            else:
+                enriched['status'] = 'saved' if flight_memory[icao].get('seen_cycles', 0) > 0 else 'new'
             enriched['seen_cycles'] = flight_memory[icao].get('seen_cycles', 0)
             enriched['origin'] = flight_memory[icao].get('origin')
             enriched['destination'] = flight_memory[icao].get('destination')
@@ -899,7 +907,8 @@ def process_aircraft_data(aircraft_data):
                 enriched['airline_logo'] = airline_info.get('logo_url')
                 enriched['airline_name'] = airline_info.get('name')
         else:
-            enriched['status'] = 'new'
+            # Set status: unidentified takes priority
+            enriched['status'] = 'unidentified' if is_unidentified else 'new'
             # Add airline logo info if available (for new flights)
             if airline_info:
                 enriched['airline_code'] = airline_info.get('code')
@@ -1000,7 +1009,7 @@ def process_aircraft_data(aircraft_data):
     # Calculate statistics
     stats = {
         'active': len(enriched_flights),
-        'with_callsigns': len(aircraft_with_callsigns),
+        'with_callsigns': len([ac for ac in recent_aircraft if ac.get('flight', '').strip()]),
         'total': len(aircraft),
         'timestamp': datetime.now().isoformat()
     }
@@ -1116,6 +1125,14 @@ async def flight_data_loop(config):
             # Process and enrich flight data
             flight_update = process_aircraft_data(data)
             latest_flight_data = flight_update
+            
+            # Debug: Log position updates for first few flights
+            flights_with_position = [f for f in flight_update.get('flights', []) if f.get('lat') and f.get('lon')]
+            if flights_with_position:
+                debug_flight = flights_with_position[0]
+                callsign = debug_flight.get('callsign', debug_flight.get('icao', 'Unknown'))
+                print(f"📡 Update: {callsign} at {debug_flight.get('lat', 0):.5f}, {debug_flight.get('lon', 0):.5f} (alt: {debug_flight.get('altitude', 'N/A')}, speed: {debug_flight.get('speed', 'N/A')})")
+            
             broadcast_sse(flight_update)
         else:
             consecutive_errors += 1

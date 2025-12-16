@@ -198,6 +198,10 @@
             border-top: 4px solid #3b82f6;
         }
         
+        .flight-card.unidentified {
+            border-top: 4px solid #9ca3af;
+        }
+        
         .flight-card.selected {
             background: var(--selected-bg);
             box-shadow: 0 8px 16px rgba(62, 145, 190, 0.3);
@@ -763,7 +767,9 @@
             const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
             
             // Plane SVG icon with current theme color
-            const routeColor = getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3e91be';
+            // Use light gray for unidentified flights
+            const isUnidentified = flight.status === 'unidentified';
+            const routeColor = isUnidentified ? '#9ca3af' : (getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3e91be');
             const planeIcon = `
                 <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${routeColor}"/>
@@ -774,7 +780,7 @@
                 <!-- Header -->
                 <div class="flight-card-header">
                     <div class="flight-card-header-left">
-                        <div class="flight-card-header-callsign">${flight.callsign || 'N/A'}</div>
+                        <div class="flight-card-header-callsign">${flight.callsign || 'Unidentified'}</div>
                         <div class="flight-card-icao">${flight.icao}</div>
                     </div>
                     <div class="flight-card-header-right">
@@ -783,6 +789,20 @@
                 </div>
                 
                 <!-- Route Section with Plane -->
+                ${isUnidentified ? `
+                <div class="flight-card-route" style="padding: 24px 20px; text-align: center;">
+                    <div style="color: var(--text-muted); font-style: italic; font-size: 0.9em;">
+                        ${flight.aircraft_model || flight.aircraft_type ? `
+                            <div style="font-size: 1.2em; font-weight: bold; color: var(--text-primary); margin-bottom: 8px;">
+                                ${flight.aircraft_model || flight.aircraft_type}
+                                ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
+                            </div>
+                        ` : ''}
+                        <div>No route information available</div>
+                        <div style="margin-top: 8px; font-size: 0.85em;">Aircraft detected without callsign</div>
+                    </div>
+                </div>
+                ` : `
                 <div class="flight-card-route">
                     <div class="route-section">
                         <div class="route-section-label">From</div>
@@ -801,6 +821,7 @@
                         ${destCountry ? `<div class="route-country-info" style="justify-content: flex-end;">${destCountry}</div>` : ''}
                     </div>
                 </div>
+                `}
                 
                 <!-- Footer with Details -->
                 <div class="flight-card-footer">
@@ -840,17 +861,22 @@
                         <div class="flight-detail-value" style="font-family: monospace; font-size: 14px;">${formatCoordinates(flight.lat, flight.lon)}</div>
                     </div>
                     ` : ''}
-                    ${flight.aircraft_model || flight.aircraft_type ? `
+                    ${flight.aircraft_model || flight.aircraft_type || flight.aircraft_registration ? `
                     <div class="flight-detail-item" style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
                         <div style="flex: 1;">
                             <div class="flight-detail-label">Aircraft</div>
                             <div class="flight-detail-value">
-                                ${flight.aircraft_model || flight.aircraft_type || 'N/A'}
+                                ${flight.aircraft_model || flight.aircraft_type || 'Unknown'}
                                 ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
                             </div>
                         </div>
                     </div>
-                    ` : ''}
+                    ` : (flight.status === 'unidentified' ? `
+                    <div class="flight-detail-item" style="grid-column: 1 / -1;">
+                        <div class="flight-detail-label">Aircraft Info</div>
+                        <div class="flight-detail-value" style="color: var(--text-muted); font-style: italic;">No aircraft information available</div>
+                    </div>
+                    ` : '')}
                 </div>
             `;
             
