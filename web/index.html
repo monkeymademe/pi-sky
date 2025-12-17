@@ -767,8 +767,10 @@
             const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
             
             // Plane SVG icon with current theme color
-            // Use light gray for unidentified flights
-            const isUnidentified = flight.status === 'unidentified';
+            // Check if flight is unidentified: no callsign OR no route info
+            // A flight can have a route even if it was initially unidentified
+            const hasRoute = flight.origin && flight.destination;
+            const isUnidentified = !flight.callsign || flight.callsign === 'Unidentified' || (!hasRoute && flight.status === 'unidentified');
             const routeColor = isUnidentified ? '#9ca3af' : (getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3e91be');
             const planeIcon = `
                 <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -789,17 +791,16 @@
                 </div>
                 
                 <!-- Route Section with Plane -->
-                ${isUnidentified ? `
-                <div class="flight-card-route" style="padding: 24px 20px; text-align: center;">
-                    <div style="color: var(--text-muted); font-style: italic; font-size: 0.9em;">
+                ${!hasRoute ? `
+                <div class="flight-card-route" style="padding: 24px 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
+                    <div style="color: var(--text-muted); font-size: 0.85em; line-height: 1.4;">
                         ${flight.aircraft_model || flight.aircraft_type ? `
-                            <div style="font-size: 1.2em; font-weight: bold; color: var(--text-primary); margin-bottom: 8px;">
+                            <div style="font-size: 1.5em; font-weight: bold; color: var(--route-color); margin-bottom: 4px;">
                                 ${flight.aircraft_model || flight.aircraft_type}
                                 ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
                             </div>
                         ` : ''}
-                        <div>No route information available</div>
-                        <div style="margin-top: 8px; font-size: 0.85em;">Aircraft detected without callsign</div>
+                        <div style="font-style: italic; color: var(--text-secondary);">No route • No callsign</div>
                     </div>
                 </div>
                 ` : `
