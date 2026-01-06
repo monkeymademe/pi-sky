@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flight API Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        pre {
+            background: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Flight API Test Page</h1>
+    
+    <div>
+        <button onclick="testAPI()">Test API</button>
+        <button onclick="clearResults()">Clear</button>
+    </div>
+    
+    <div id="status"></div>
+    <div id="results"></div>
+    
+    <script>
+        function clearResults() {
+            document.getElementById('status').innerHTML = '';
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        async function testAPI() {
+            clearResults();
+            showStatus('Testing API...', 'info');
+            
+            const url = '/api/flights?limit=1';
+            console.log('Fetching:', url);
+            
+            const startTime = Date.now();
+            
+            try {
+                const response = await fetch(url);
+                const elapsed = Date.now() - startTime;
+                
+                console.log('Response status:', response.status);
+                console.log('Response time:', elapsed + 'ms');
+                console.log('Headers:', [...response.headers.entries()]);
+                
+                showStatus(`Response received in ${elapsed}ms (status: ${response.status})`, 
+                          response.ok ? 'success' : 'error');
+                
+                const text = await response.text();
+                console.log('Response text length:', text.length);
+                console.log('Response text (first 500 chars):', text.substring(0, 500));
+                
+                try {
+                    const data = JSON.parse(text);
+                    document.getElementById('results').innerHTML = `
+                        <h2>Success!</h2>
+                        <p>Flights found: ${data.count || 0}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } catch (e) {
+                    document.getElementById('results').innerHTML = `
+                        <h2>Not JSON</h2>
+                        <pre>${text.substring(0, 1000)}</pre>
+                    `;
+                }
+                
+            } catch (error) {
+                const elapsed = Date.now() - startTime;
+                console.error('Error:', error);
+                showStatus(`Error after ${elapsed}ms: ${error.message}`, 'error');
+                document.getElementById('results').innerHTML = `
+                    <h2>Error</h2>
+                    <pre>${error.stack || error.message}</pre>
+                `;
+            }
+        }
+        
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            console.log('Page loaded, auto-testing...');
+            setTimeout(testAPI, 500);
+        });
+    </script>
+</body>
+</html>
+

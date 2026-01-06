@@ -22,5 +22,12 @@
         "nearest_airport": "EDDB",
         "airport_lat": null,
         "airport_lon": null
+    },
+    "database": {
+        "enabled": true,
+        "db_path": "flights.db",
+        "snapshot_interval_seconds": 5,
+        "save_events": true,
+        "cleanup_days": 7
     }
 }

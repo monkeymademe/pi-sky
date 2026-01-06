@@ -1,0 +1,241 @@
+================================================================================
+FLIGHT TRACKING DATABASE SCHEMA
+================================================================================
+
+CONCEPT: ICAO24 vs Flight
+--------------------------
+
+ICAO24 (Aircraft):          Flight (Journey):
+  ┌─────────────┐             ┌─────────────┐
+  │   a12345    │────────────▶│  UAL123     │  Jan 6, 10:00-11:30
+  │  (Boeing    │             │  SFO → LAX  │
+  │   737-800)  │             └─────────────┘
+  └─────────────┘                    │
+        │                      ┌─────────────┐
+        └─────────────────────▶│  UAL456     │  Jan 6, 14:00-15:45
+                               │  LAX → SFO  │
+                               └─────────────┘
+
+One aircraft can fly multiple flights!
+Same callsign (UAL123) is reused daily!
+
+
+DATABASE TABLES
+--------------------------
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  aircraft (one row per aircraft)                                     │
+├──────────────────────────────────────────────────────────────────────┤
+│  icao (PK)          │ registration │ type  │ model         │ ...    │
+├──────────────────────────────────────────────────────────────────────┤
+│  a12345             │ N12345       │ B738  │ Boeing 737-800│ ...    │
+│  3c55c7             │ D-ABCD       │ A320  │ Airbus A320   │ ...    │
+│  abc123             │ G-WXYZ       │ B77W  │ Boeing 777-300│ ...    │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ aircraft_icao (FK)
+                                ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  flights (one row per journey)                                       │
+├──────────────────────────────────────────────────────────────────────┤
+│  id │ aircraft_icao │ callsign │ origin │ dest │ start_time │ ...   │
+├──────────────────────────────────────────────────────────────────────┤
+│  1  │ a12345        │ UAL123   │ SFO    │ LAX  │ 10:00      │ ...   │
+│  2  │ a12345        │ UAL456   │ LAX    │ SFO  │ 14:00      │ ...   │
+│  3  │ 3c55c7        │ DLH789   │ FRA    │ JFK  │ 09:30      │ ...   │
+│  4  │ abc123        │ BAW101   │ LHR    │ LAX  │ 11:00      │ ...   │
+└──────────────────────────────────────────────────────────────────────┘
+                                │
+                                │ flight_id (FK)
+                                ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  positions (time-series data)                                        │
+├──────────────────────────────────────────────────────────────────────┤
+│  id  │ flight_id │ ts       │ lat     │ lon      │ alt   │ speed   │
+├──────────────────────────────────────────────────────────────────────┤
+│  1   │ 1         │ 10:00:00 │ 37.6213 │ -122.379 │ 1000  │ 150     │
+│  2   │ 1         │ 10:00:05 │ 37.6215 │ -122.380 │ 1500  │ 180     │
+│  3   │ 1         │ 10:00:10 │ 37.6218 │ -122.381 │ 2000  │ 200     │
+│  ... │ 1         │ ...      │ ...     │ ...      │ ...   │ ...     │
+│  500 │ 1         │ 11:30:00 │ 33.9425 │ -118.408 │ 500   │ 120     │
+└──────────────────────────────────────────────────────────────────────┘
+
+
+DATA FLOW
+--------------------------
+
+ADS-B Message from dump1090:
+  {
+    "hex": "a12345",           ← ICAO24 (aircraft identifier)
+    "flight": "UAL123",        ← Callsign (flight identifier)
+    "lat": 37.6213,
+    "lon": -122.379,
+    "altitude": 1000,
+    "speed": 150,
+    ...
+  }
+           │
+           ▼
+  1. Upsert aircraft (icao=a12345)
+           │
+           ▼
+  2. Get or create active flight
+     - If new ICAO → create new flight
+     - If callsign changed → end old flight, create new one
+     - If same → use existing flight
+           │
+           ▼
+  3. Insert position record
+     - Links to flight_id
+     - Records lat/lon/alt/speed/etc
+           │
+           ▼
+  4. Update flight info
+     - Add origin/destination when discovered
+     - Add airline info
+     - Update aircraft details
+
+
+FLIGHT LIFECYCLE
+--------------------------
+
+1. NEW FLIGHT DETECTED
+   ┌─────────────────────────────────────┐
+   │ ADS-B: hex=a12345, flight=UAL123   │
+   └─────────────────────────────────────┘
+                  │
+                  ▼
+   ┌─────────────────────────────────────┐
+   │ Create aircraft (if new)            │
+   │ Create flight (id=1)                │
+   │ Status: airborne                    │
+   │ end_time: NULL                      │
+   └─────────────────────────────────────┘
+
+2. POSITION UPDATES
+   ┌─────────────────────────────────────┐
+   │ Every 1-5 seconds:                  │
+   │ Insert position (flight_id=1)       │
+   │ Update aircraft.last_seen_at        │
+   └─────────────────────────────────────┘
+
+3. ROUTE DISCOVERED
+   ┌─────────────────────────────────────┐
+   │ adsb.lol API returns:               │
+   │ origin=SFO, destination=LAX         │
+   │                                     │
+   │ Update flight (id=1)                │
+   │ Set origin, destination             │
+   └─────────────────────────────────────┘
+
+4. CALLSIGN CHANGES (New Flight!)
+   ┌─────────────────────────────────────┐
+   │ ADS-B: hex=a12345, flight=UAL456   │
+   │ (same aircraft, different callsign) │
+   └─────────────────────────────────────┘
+                  │
+                  ▼
+   ┌─────────────────────────────────────┐
+   │ End flight (id=1)                   │
+   │ Set end_time, status=callsign_change│
+   │                                     │
+   │ Create new flight (id=2)            │
+   │ callsign=UAL456                     │
+   │ Status: airborne                    │
+   └─────────────────────────────────────┘
+
+5. FLIGHT ENDS (Future Enhancement)
+   ┌─────────────────────────────────────┐
+   │ Altitude < 500ft for 5+ minutes     │
+   │ OR                                  │
+   │ No updates for 30+ minutes          │
+   └─────────────────────────────────────┘
+                  │
+                  ▼
+   ┌─────────────────────────────────────┐
+   │ End flight (id=2)                   │
+   │ Set end_time, status=landed         │
+   └─────────────────────────────────────┘
+
+
+QUERY EXAMPLES
+--------------------------
+
+Q: What's flying right now?
+A: SELECT * FROM flights WHERE end_time IS NULL;
+
+Q: Show me all flights for aircraft a12345
+A: SELECT * FROM flights WHERE aircraft_icao = 'a12345';
+
+Q: What's the path for flight #1?
+A: SELECT ts, lat, lon, altitude FROM positions WHERE flight_id = 1;
+
+Q: Which aircraft have we seen?
+A: SELECT * FROM aircraft ORDER BY last_seen_at DESC;
+
+Q: How many flights has each aircraft made?
+A: SELECT aircraft_icao, COUNT(*) FROM flights GROUP BY aircraft_icao;
+
+
+INDEXES
+--------------------------
+
+aircraft:
+  - PRIMARY KEY on icao
+
+flights:
+  - PRIMARY KEY on id
+  - INDEX on aircraft_icao (find flights for aircraft)
+  - INDEX on callsign (find flights by callsign)
+  - INDEX on start_time, end_time (time range queries)
+
+positions:
+  - PRIMARY KEY on id
+  - INDEX on flight_id, ts (get positions for flight, ordered)
+  - INDEX on ts (time-based queries)
+
+
+STORAGE EFFICIENCY
+--------------------------
+
+Old System (flight_snapshots):
+  ┌─────────────────────────────────────────────────────────────┐
+  │ Every 5 seconds, store ALL data for ALL flights:           │
+  │ timestamp, icao, callsign, lat, lon, alt, speed, ...       │
+  │ origin, dest, aircraft_model, aircraft_type, registration   │
+  │ airline_code, airline_name, ...                             │
+  │                                                             │
+  │ Duplicate aircraft info in EVERY snapshot!                  │
+  └─────────────────────────────────────────────────────────────┘
+
+New System:
+  ┌─────────────────────────────────────────────────────────────┐
+  │ aircraft table: Store once per aircraft                     │
+  │   icao, registration, model, type (ONE ROW)                 │
+  │                                                             │
+  │ flights table: Store once per flight                        │
+  │   id, aircraft_icao, callsign, origin, dest (ONE ROW)       │
+  │                                                             │
+  │ positions table: Store only position data                   │
+  │   flight_id, ts, lat, lon, alt, speed (MANY ROWS)           │
+  │                                                             │
+  │ No duplication! More efficient!                             │
+  └─────────────────────────────────────────────────────────────┘
+
+
+BACKWARD COMPATIBILITY
+--------------------------
+
+Both systems run in parallel:
+
+  ADS-B Data
+      │
+      ├──▶ OLD: flight_snapshots (still works!)
+      │         └─▶ Current replay page
+      │
+      └──▶ NEW: aircraft + flights + positions
+                └─▶ Future replay page
+
+
+================================================================================
+

@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Tracker - Flight History</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Custom styles -->
+    <style>
+        :root {
+            --bg-gradient-start: #3e91be;
+            --bg-gradient-end: #cd3c65;
+            --bg-color: #f8f8f8;
+            --card-bg: white;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --text-muted: #999;
+            --text-white: white;
+            --border-color: #f0f0f0;
+            --accent-color: #3e91be;
+            --accent-gradient: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
+            --header-bg: white;
+            --nav-hover: rgba(62, 145, 190, 0.1);
+            --nav-active-bg: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
+            --card-header-bg: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
+            --card-footer-bg: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            --route-color: #3e91be;
+            --selected-bg: #f3f4f6;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #6b6a6a;
+            --bg-gradient-end: #cd3c65;
+            --bg-color: #0f1419;
+            --card-bg: #1a1f2e;
+            --text-primary: #e0e0e0;
+            --text-secondary: #b0b0b0;
+            --text-muted: #808080;
+            --text-white: #e0e0e0;
+            --border-color: #2a2f3e;
+            --accent-color: #5ba8d1;
+            --accent-gradient: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
+            --header-bg: #1a1f2e;
+            --nav-hover: rgba(91, 168, 209, 0.2);
+            --nav-active-bg: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
+            --card-header-bg: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
+            --card-footer-bg: linear-gradient(135deg, #2a2f3e 0%, #1f2532 100%);
+            --route-color: #5ba8d1;
+            --selected-bg: #2a2f3e;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: var(--header-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            transition: background 0.3s ease;
+        }
+        
+        .header h1 {
+            color: var(--accent-color);
+            font-size: 2em;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-primary);
+            padding: 10px 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .nav-links a:hover {
+            background: var(--nav-hover);
+        }
+        
+        .nav-links a.active {
+            background: var(--nav-active-bg);
+            color: var(--text-white);
+        }
+        
+        .theme-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .theme-toggle {
+            width: 50px;
+            height: 26px;
+            background: var(--border-color);
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        .theme-toggle-slider {
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        [data-theme="dark"] .theme-toggle-slider {
+            transform: translateX(24px);
+            background: var(--text-primary);
+        }
+        
+        .theme-toggle-icon {
+            width: 24px;
+            height: 24px;
+            color: var(--text-primary);
+            transition: color 0.3s ease;
+        }
+        
+        .status-bar {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            transition: background 0.3s ease;
+        }
+        
+        .status-bar .status-info {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .status-bar .status-item {
+            color: var(--text-secondary);
+            font-size: 0.95em;
+        }
+        
+        .status-bar .status-item strong {
+            color: var(--text-primary);
+        }
+        
+        .refresh-btn {
+            background: var(--accent-gradient);
+            color: var(--text-white);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .refresh-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .flights-container {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .flight-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+        
+        .flight-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+        
+        .flight-header {
+            background: var(--card-header-bg);
+            color: var(--text-white);
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .flight-header h3 {
+            font-size: 1.5em;
+            margin: 0;
+        }
+        
+        .flight-header .flight-info {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 0.95em;
+        }
+        
+        .flight-header .flight-info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .flight-header .flight-info-item label {
+            font-size: 0.85em;
+            opacity: 0.9;
+        }
+        
+        .flight-header .flight-info-item value {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        
+        .flight-body {
+            padding: 20px;
+        }
+        
+        .flight-map-container {
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            height: 300px;
+            background: var(--card-bg);
+        }
+        
+        .flight-map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .map-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            font-size: 0.9em;
+        }
+        
+        .positions-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .positions-header h4 {
+            color: var(--text-primary);
+            font-size: 1.2em;
+        }
+        
+        .toggle-positions-btn {
+            background: var(--accent-color);
+            color: var(--text-white);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: opacity 0.3s ease;
+        }
+        
+        .toggle-positions-btn:hover {
+            opacity: 0.9;
+        }
+        
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .positions-table.show {
+            display: table;
+        }
+        
+        .positions-table th {
+            background: var(--card-footer-bg);
+            color: var(--text-primary);
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-color);
+            font-size: 0.9em;
+            position: sticky;
+            top: 0;
+        }
+        
+        .positions-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+        
+        .positions-table tbody tr:hover {
+            background: var(--selected-bg);
+        }
+        
+        .positions-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+        
+        .loading-spinner {
+            border: 4px solid var(--border-color);
+            border-top: 4px solid var(--accent-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        [data-theme="dark"] .error {
+            background: #3a2222;
+            color: #ff6666;
+        }
+        
+        .no-flights {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+        
+        .no-flights-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            
+            .flight-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .positions-table {
+                font-size: 0.8em;
+            }
+            
+            .positions-table th,
+            .positions-table td {
+                padding: 8px 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✈️ Flight History</h1>
+            <div class="nav-links">
+                <a href="index.html">Flight List</a>
+                <a href="index-maps.html">Flight Map</a>
+                <a href="index-replay.html" class="active">History</a>
+            </div>
+            <div class="theme-toggle-container">
+                <div class="theme-toggle-icon" id="themeIcon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                        <path id="themeIconPath" d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
+                    </svg>
+                </div>
+                <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                    <div class="theme-toggle-slider"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-info">
+                <div class="status-item">
+                    <strong id="flightCount">0</strong> flights
+                </div>
+                <div class="status-item">
+                    <strong id="totalPositions">0</strong> total positions
+                </div>
+                <div class="status-item">
+                    Last updated: <strong id="lastUpdated">Never</strong>
+                </div>
+            </div>
+            <button class="refresh-btn" id="refreshBtn" onclick="loadFlights()">
+                🔄 Refresh
+            </button>
+        </div>
+        
+        <div id="flightsContainer" class="flights-container">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <div>Loading flights...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        let flights = [];
+        const flightMaps = {}; // Store flight maps
+        
+        // Theme management
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
+        }
+        
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+        }
+        
+        function updateThemeIcon(theme) {
+            const path = document.getElementById('themeIconPath');
+            if (theme === 'dark') {
+                path.setAttribute('d', 'M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m0 1a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.414a.5.5 0 1 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707l-1.414 1.414a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708');
+            } else {
+                path.setAttribute('d', 'M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278');
+            }
+        }
+        
+        // Load flights from API
+        async function loadFlights() {
+            const container = document.getElementById('flightsContainer');
+            const refreshBtn = document.getElementById('refreshBtn');
+            
+            refreshBtn.disabled = true;
+            container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>Loading flights...</div></div>';
+            
+            try {
+                // Use absolute URL to avoid any path issues
+                const apiUrl = '/api/flights?limit=10';
+                console.log('📡 Fetching flights from:', apiUrl);
+                console.log('📡 Current page URL:', window.location.href);
+                console.log('📡 Full API URL will be:', window.location.origin + apiUrl);
+                
+                // Add timeout to fetch request
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased)
+                
+                const startTime = Date.now();
+                console.log('⏱️  Request started at:', new Date().toISOString());
+                
+                console.log('📡 Making fetch request to:', apiUrl);
+                const response = await fetch(apiUrl, {
+                    signal: controller.signal,
+                    cache: 'no-cache',  // Prevent caching
+                    headers: {
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                clearTimeout(timeoutId);
+                
+                const elapsed = Date.now() - startTime;
+                console.log(`⏱️  Request completed in ${elapsed}ms`);
+                console.log('📥 Response status:', response.status, response.statusText);
+                console.log('📥 Response headers:', [...response.headers.entries()]);
+                
+                if (!response.ok) {
+                    console.error('❌ Response not OK:', response.status);
+                    // Try to get error details from response
+                    let errorText = await response.text();
+                    console.error('❌ API Error Response:', errorText);
+                    
+                    // Try to parse as JSON
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                        throw new Error(`HTTP ${response.status}: ${errorData.error || errorData.message || response.statusText}`);
+                    } catch (e) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${errorText.substring(0, 200)}`);
+                    }
+                }
+                
+                // Get response text first to debug
+                console.log('📄 Reading response body...');
+                const textStart = Date.now();
+                const responseText = await response.text();
+                const textElapsed = Date.now() - textStart;
+                console.log(`📄 Response text read in ${textElapsed}ms, length: ${responseText.length}`);
+                console.log('📄 Response text (first 500 chars):', responseText.substring(0, 500));
+                
+                // Try to parse as JSON
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                    console.log('✅ Parsed JSON data:', data);
+                    console.log('   Data keys:', Object.keys(data));
+                    console.log('   Flights type:', typeof data.flights);
+                    console.log('   Flights is array:', Array.isArray(data.flights));
+                } catch (parseError) {
+                    console.error('❌ Failed to parse JSON:', parseError);
+                    console.error('   Response text (first 500 chars):', responseText.substring(0, 500));
+                    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}`);
+                }
+                
+                flights = data.flights || [];
+                console.log(`📊 Found ${flights.length} flights in response`);
+                
+                if (!Array.isArray(flights)) {
+                    console.error('❌ Expected flights array, got:', typeof flights, flights);
+                    throw new Error('Invalid response format: flights is not an array');
+                }
+                
+                if (flights.length === 0) {
+                    console.warn('⚠️  No flights in response, but that\'s OK');
+                } else {
+                    console.log('✅ First flight:', flights[0]);
+                }
+                
+                console.log('📋 About to render flights, count:', flights.length);
+                
+                if (flights.length === 0) {
+                    console.log('📋 Rendering "no flights" message');
+                    container.innerHTML = `
+                        <div class="no-flights">
+                            <div class="no-flights-icon">✈️</div>
+                            <h2>No flights found</h2>
+                            <p>No flights have been tracked yet. Flights will appear here once they are detected.</p>
+                        </div>
+                    `;
+                    document.getElementById('flightCount').textContent = '0';
+                    document.getElementById('totalPositions').textContent = '0';
+                } else {
+                    console.log('📋 Rendering flights list...');
+                    try {
+                        renderFlights();
+                        console.log('✅ renderFlights() completed');
+                        document.getElementById('flightCount').textContent = flights.length;
+                        
+                        // Calculate total positions
+                        let totalPositions = 0;
+                        for (const flight of flights) {
+                            totalPositions += flight.position_count || 0;
+                        }
+                        document.getElementById('totalPositions').textContent = totalPositions.toLocaleString();
+                        console.log('✅ All rendering completed');
+                    } catch (renderError) {
+                        console.error('❌ Error in renderFlights():', renderError);
+                        container.innerHTML = `
+                            <div class="error">
+                                <h3>Error rendering flights</h3>
+                                <p>${renderError.message}</p>
+                                <pre>${renderError.stack}</pre>
+                            </div>
+                        `;
+                    }
+                }
+                
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
+                
+            } catch (error) {
+                console.error('❌ Error loading flights:', error);
+                console.error('Error stack:', error.stack);
+                
+                let errorMessage = error.message || 'Unknown error';
+                
+                // Check if it's a network error
+                if (error instanceof TypeError && error.message.includes('fetch')) {
+                    errorMessage = 'Network error: Could not connect to server. Make sure the server is running on port 5050.';
+                }
+                
+                // Check if it's a timeout
+                if (error.name === 'AbortError') {
+                    errorMessage = 'Request timed out after 5 seconds. The server may be slow or not responding. Check server logs and try restarting the server.';
+                }
+                
+                container.innerHTML = `
+                    <div class="error">
+                        <h3>Error loading flights</h3>
+                        <p><strong>Error:</strong> ${errorMessage}</p>
+                        <p style="margin-top: 10px; font-size: 0.9em;">
+                            <strong>Debug Info:</strong><br>
+                            • Check browser console (F12) for detailed logs<br>
+                            • Test API directly: <code>curl "http://localhost:5050/api/flights?limit=1"</code><br>
+                            • Make sure server is running on port 5050<br>
+                            • Check server terminal for error messages
+                        </p>
+                        <p style="margin-top: 10px; font-size: 0.9em;">
+                            <strong>Quick Test:</strong><br>
+                            Open browser console (F12) and look for log messages starting with 📡, ⏱️, 📥
+                        </p>
+                        <p style="margin-top: 10px; font-size: 0.9em; font-family: monospace; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 4px;">
+                            ${error.stack ? error.stack.substring(0, 500) : ''}
+                        </p>
+                    </div>
+                `;
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        }
+        
+        // Render flights list
+        function renderFlights() {
+            const container = document.getElementById('flightsContainer');
+            
+            if (flights.length === 0) {
+                container.innerHTML = `
+                    <div class="no-flights">
+                        <div class="no-flights-icon">✈️</div>
+                        <h2>No flights found</h2>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = flights.map(flight => `
+                <div class="flight-card" data-flight-id="${flight.id}">
+                    <div class="flight-header">
+                        <div>
+                            <h3>${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})</h3>
+                            ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
+                        </div>
+                        <div class="flight-info">
+                            ${flight.origin && flight.destination ? `
+                                <div class="flight-info-item">
+                                    <label>Route</label>
+                                    <value>${flight.origin} → ${flight.destination}</value>
+                                </div>
+                            ` : ''}
+                            <div class="flight-info-item">
+                                <label>Status</label>
+                                <value>${flight.status || 'unknown'}</value>
+                            </div>
+                            ${flight.position_count !== null && flight.position_count !== undefined ? `
+                                <div class="flight-info-item">
+                                    <label>Positions</label>
+                                    <value>${flight.position_count.toLocaleString()}</value>
+                                </div>
+                            ` : ''}
+                            <div class="flight-info-item">
+                                <label>Started</label>
+                                <value>${formatDateTime(flight.start_time)}</value>
+                            </div>
+                            ${flight.end_time ? `
+                                <div class="flight-info-item">
+                                    <label>Ended</label>
+                                    <value>${formatDateTime(flight.end_time)}</value>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="flight-body">
+                        <div class="flight-map-container">
+                            <div class="map-loading" id="map-loading-${flight.id}">Loading flight path...</div>
+                            <div class="flight-map" id="flight-map-${flight.id}" style="display: none;"></div>
+                        </div>
+                        <div class="positions-header">
+                            <h4>Position Data</h4>
+                            <button class="toggle-positions-btn" onclick="togglePositions(${flight.id})" id="btn-${flight.id}">
+                                Show Positions
+                            </button>
+                        </div>
+                        <table class="positions-table" id="positions-${flight.id}">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Latitude</th>
+                                    <th>Longitude</th>
+                                    <th>Altitude (ft)</th>
+                                    <th>Speed (kts)</th>
+                                    <th>Track (°)</th>
+                                    <th>Heading (°)</th>
+                                    <th>Vertical Rate</th>
+                                    <th>Squawk</th>
+                                    <th>Distance (km)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="positions-body-${flight.id}">
+                                <tr>
+                                    <td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                                        Loading positions...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Initialize maps for all flights (staggered to avoid overwhelming server)
+            flights.forEach((flight, index) => {
+                setTimeout(() => loadFlightMap(flight.id), 200 * (index + 1)); // Stagger by 200ms each
+            });
+        }
+        
+        // Load and display flight path on mini map
+        async function loadFlightMap(flightId) {
+            const mapContainer = document.getElementById(`flight-map-${flightId}`);
+            const loadingDiv = document.getElementById(`map-loading-${flightId}`);
+            
+            if (!mapContainer || !loadingDiv) {
+                console.log(`Map containers not found for flight ${flightId}`);
+                return;
+            }
+            
+            try {
+                console.log(`Loading map for flight ${flightId}...`);
+                // Fetch positions with timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                
+                const response = await fetch(`/api/flights/${flightId}/positions`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    console.error(`Failed to load positions for flight ${flightId}: HTTP ${response.status}`);
+                    loadingDiv.textContent = `Error: HTTP ${response.status}`;
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log(`   ✓ Received ${data.count || 0} positions for flight ${flightId}`);
+                const positions = data.positions || [];
+                
+                if (positions.length === 0) {
+                    console.log(`   ⚠️  No positions in response for flight ${flightId}`);
+                    loadingDiv.textContent = 'No position data available';
+                    return;
+                }
+                
+                // Debug: Check first position structure
+                if (positions.length > 0) {
+                    console.log(`   📍 First position sample:`, JSON.stringify(positions[0]));
+                }
+                
+                // Filter positions with valid coordinates
+                // Check both null and undefined, and ensure they're numbers
+                const validPositions = positions.filter(p => {
+                    const lat = p.lat;
+                    const lon = p.lon;
+                    const isValid = lat != null && lon != null && 
+                                   !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon)) &&
+                                   parseFloat(lat) !== 0 && parseFloat(lon) !== 0; // Also filter out 0,0 (invalid)
+                    if (!isValid && positions.indexOf(p) < 3) {
+                        console.log(`   ⚠️  Invalid position: lat=${lat}, lon=${lon}`);
+                    }
+                    return isValid;
+                });
+                console.log(`   ✓ ${validPositions.length} valid positions (of ${positions.length} total) for flight ${flightId}`);
+                
+                if (validPositions.length === 0) {
+                    console.log(`   ⚠️  No valid coordinates for flight ${flightId}`);
+                    if (positions.length > 0) {
+                        console.log(`   📍 Sample positions:`, positions.slice(0, 3));
+                    }
+                    loadingDiv.textContent = 'No valid position data';
+                    return;
+                }
+                
+                // Create map path
+                const path = validPositions.map(p => [p.lat, p.lon]);
+                
+                // Initialize map
+                const map = L.map(`flight-map-${flightId}`, {
+                    zoomControl: true,
+                    attributionControl: true
+                });
+                
+                // Add tile layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 18
+                }).addTo(map);
+                
+                // Draw flight path
+                const polyline = L.polyline(path, {
+                    color: '#3e91be',
+                    weight: 3,
+                    opacity: 0.8,
+                    smoothFactor: 1
+                }).addTo(map);
+                
+                // Fit map to path
+                if (path.length > 0) {
+                    map.fitBounds(polyline.getBounds(), {
+                        padding: [20, 20],
+                        maxZoom: 10
+                    });
+                }
+                
+                // Add start marker
+                if (path.length > 0) {
+                    L.marker(path[0], {
+                        icon: L.divIcon({
+                            className: 'flight-start-marker',
+                            html: '<div style="background: #28a745; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [12, 12]
+                        })
+                    }).addTo(map).bindPopup('Start');
+                }
+                
+                // Add end marker
+                if (path.length > 1) {
+                    L.marker(path[path.length - 1], {
+                        icon: L.divIcon({
+                            className: 'flight-end-marker',
+                            html: '<div style="background: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>',
+                            iconSize: [12, 12]
+                        })
+                    }).addTo(map).bindPopup('End');
+                }
+                
+                // Store map reference (flightMaps is declared at top level)
+                if (typeof flightMaps !== 'undefined') {
+                    flightMaps[flightId] = map;
+                }
+                
+                // Show map, hide loading
+                loadingDiv.style.display = 'none';
+                mapContainer.style.display = 'block';
+                
+                // Trigger resize to ensure map renders correctly
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+                
+            } catch (error) {
+                console.error(`Error loading map for flight ${flightId}:`, error);
+                if (error.name === 'AbortError') {
+                    loadingDiv.textContent = 'Request timed out';
+                } else if (error.message && error.message.includes('fetch')) {
+                    loadingDiv.textContent = 'Network error - check server';
+                } else {
+                    loadingDiv.textContent = `Error: ${error.message || 'Unknown error'}`;
+                }
+            }
+        }
+        
+        // Toggle positions table visibility
+        async function togglePositions(flightId) {
+            const table = document.getElementById(`positions-${flightId}`);
+            const btn = document.getElementById(`btn-${flightId}`);
+            const tbody = document.getElementById(`positions-body-${flightId}`);
+            
+            if (table.classList.contains('show')) {
+                // Hide
+                table.classList.remove('show');
+                btn.textContent = 'Show Positions';
+            } else {
+                // Show - load positions if not already loaded
+                if (tbody.children.length === 1 && tbody.children[0].textContent.includes('Loading')) {
+                    await loadPositions(flightId);
+                }
+                table.classList.add('show');
+                btn.textContent = 'Hide Positions';
+            }
+        }
+        
+        // Load positions for a flight
+        async function loadPositions(flightId) {
+            const tbody = document.getElementById(`positions-body-${flightId}`);
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">Loading positions...</td></tr>';
+            
+            try {
+                const response = await fetch(`/api/flights/${flightId}/positions`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const positions = data.positions || [];
+                
+                if (positions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">No position data available</td></tr>';
+                } else {
+                    tbody.innerHTML = positions.map(pos => `
+                        <tr>
+                            <td>${formatDateTime(pos.ts)}</td>
+                            <td>${pos.lat !== null ? pos.lat.toFixed(5) : '—'}</td>
+                            <td>${pos.lon !== null ? pos.lon.toFixed(5) : '—'}</td>
+                            <td>${pos.altitude !== null ? pos.altitude.toLocaleString() : '—'}</td>
+                            <td>${pos.speed !== null ? pos.speed.toFixed(1) : '—'}</td>
+                            <td>${pos.track !== null ? pos.track.toFixed(1) : '—'}</td>
+                            <td>${pos.heading !== null ? pos.heading.toFixed(1) : '—'}</td>
+                            <td>${pos.vertical_rate !== null ? pos.vertical_rate : '—'}</td>
+                            <td>${pos.squawk || '—'}</td>
+                            <td>${pos.distance !== null ? pos.distance.toFixed(2) : '—'}</td>
+                        </tr>
+                    `).join('');
+                }
+                
+            } catch (error) {
+                console.error(`Error loading positions for flight ${flightId}:`, error);
+                tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">Error loading positions: ${error.message}</td></tr>`;
+            }
+        }
+        
+        // Format date/time
+        function formatDateTime(isoString) {
+            if (!isoString) return '—';
+            const date = new Date(isoString);
+            return date.toLocaleString();
+        }
+        
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            loadFlights();
+            
+            // Auto-refresh every 30 seconds (disabled for now to prevent multiple requests)
+            // setInterval(loadFlights, 30000);
+        });
+    </script>
+</body>
+</html>

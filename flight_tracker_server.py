@@ -27,6 +27,7 @@ import subprocess
 
 from flight_info import get_flight_route, get_aircraft_info_adsblol, get_airport_coordinates, get_city_name_from_coordinates
 from airline_logos import get_airline_info
+from flight_db import FlightDatabase
 
 # Try to import Inky display function
 try:
@@ -50,6 +51,9 @@ map_generation_in_progress = False  # Flag to track if map generation is current
 # API call tracking
 api_call_tracker = {}  # Track API calls per ICAO: {icao: {'route_calls': count, 'aircraft_calls': count, 'first_call': timestamp, 'last_call': timestamp}}
 api_tracker_lock = threading.Lock()  # Lock for thread-safe access
+
+# Database instance (initialized in main)
+flight_db = None
 
 SSE_KEEPALIVE_INTERVAL = 15  # seconds between keep-alive comments
 
@@ -634,7 +638,7 @@ def process_aircraft_data(aircraft_data):
     Returns:
         dict: Enriched flight data ready for broadcasting
     """
-    global flight_memory
+    global flight_memory, flight_db
     
     aircraft = aircraft_data.get('aircraft', [])
     
@@ -699,8 +703,26 @@ def process_aircraft_data(aircraft_data):
             'unidentified': is_unidentified  # Flag for unidentified flights
         }
         
+        # Track flight in new schema (aircraft + flights + positions)
+        # This happens AFTER flight_memory is updated with route/aircraft info
+        # So we'll do this later in the processing loop
+        
         # Add new flights or update existing ones
         if icao not in flight_memory:
+            # New flight detected - save event to database
+            if flight_db:
+                try:
+                    config = load_config()
+                    if config.get('database', {}).get('save_events', True):
+                        flight_db.save_event(icao, 'new_flight', {
+                            'callsign': callsign,
+                            'lat': lat,
+                            'lon': lon,
+                            'altitude': ac.get('alt_baro') or ac.get('altitude')
+                        })
+                except Exception as e:
+                    pass  # Don't fail on database errors
+            
             # New flight - lookup route info
             flight_memory[icao] = {
                 'callsign': callsign,
@@ -758,6 +780,20 @@ def process_aircraft_data(aircraft_data):
                                     dest = route_info.get('destination', '?')
                                     print(f"✓ Route found for {callsign}: {origin} → {dest}")
                                     process_aircraft_data._route_success_logged.add(icao)
+                                    
+                                    # Save event to database
+                                    if flight_db:
+                                        try:
+                                            config = load_config()
+                                            if config.get('database', {}).get('save_events', True):
+                                                flight_db.save_event(icao, 'route_found', {
+                                                    'callsign': callsign,
+                                                    'origin': origin,
+                                                    'destination': dest,
+                                                    'source': route_info.get('source', 'unknown')
+                                                })
+                                        except Exception as e:
+                                            pass  # Don't fail on database errors
                         else:
                             # Route lookup returned None (no route found)
                             flight_memory[icao]['lookup_error'] = 'No route found'
@@ -793,6 +829,15 @@ def process_aircraft_data(aircraft_data):
                         flight_memory[icao]['aircraft_model'] = aircraft_info.get('model')
                         flight_memory[icao]['aircraft_type'] = aircraft_info.get('type')
                         flight_memory[icao]['aircraft_registration'] = aircraft_info.get('registration')
+                        
+                        # Save event to database
+                        if flight_db:
+                            try:
+                                config = load_config()
+                                if config.get('database', {}).get('save_events', True):
+                                    flight_db.save_event(icao, 'aircraft_info_found', aircraft_info)
+                            except Exception as e:
+                                pass  # Don't fail on database errors
                 except Exception as e:
                     pass  # Silently fail - aircraft info is optional
         else:
@@ -914,6 +959,84 @@ def process_aircraft_data(aircraft_data):
                 enriched['airline_code'] = airline_info.get('code')
                 enriched['airline_logo'] = airline_info.get('logo_url')
                 enriched['airline_name'] = airline_info.get('name')
+        
+        # Track flight in new schema (aircraft + flights + positions)
+        # This happens AFTER enriched data is fully populated
+        if flight_db:
+            try:
+                # Update aircraft record with info from flight_memory
+                aircraft_info = {
+                    'registration': enriched.get('aircraft_registration'),
+                    'type': enriched.get('aircraft_type'),
+                    'model': enriched.get('aircraft_model'),
+                    'manufacturer': None  # Add if available
+                }
+                flight_db.upsert_aircraft(icao, aircraft_info)
+                
+                # Get or create active flight
+                active_flight = flight_db.get_active_flight(icao)
+                
+                if not active_flight:
+                    # Start new flight
+                    flight_info = {
+                        'origin': enriched.get('origin'),
+                        'destination': enriched.get('destination'),
+                        'origin_country': enriched.get('origin_country'),
+                        'destination_country': enriched.get('destination_country'),
+                        'airline_code': enriched.get('airline_code'),
+                        'airline_name': enriched.get('airline_name')
+                    }
+                    flight_id = flight_db.start_flight(icao, callsign, flight_info)
+                    flight_db.log_flight_event(flight_id, 'new_flight', {
+                        'callsign': callsign,
+                        'altitude': enriched.get('altitude')
+                    }, aircraft_icao=icao)
+                else:
+                    flight_id = active_flight['id']
+                    
+                    # Check if callsign changed (indicates new flight)
+                    if callsign and active_flight.get('callsign') and callsign != active_flight['callsign']:
+                        # End old flight, start new one
+                        flight_db.end_flight(flight_id, 'callsign_change')
+                        flight_db.log_flight_event(flight_id, 'callsign_change', {
+                            'old_callsign': active_flight['callsign'],
+                            'new_callsign': callsign
+                        }, aircraft_icao=icao)
+                        
+                        flight_info = {
+                            'origin': enriched.get('origin'),
+                            'destination': enriched.get('destination'),
+                            'origin_country': enriched.get('origin_country'),
+                            'destination_country': enriched.get('destination_country'),
+                            'airline_code': enriched.get('airline_code'),
+                            'airline_name': enriched.get('airline_name')
+                        }
+                        flight_id = flight_db.start_flight(icao, callsign, flight_info)
+                    else:
+                        # Update flight info if we learned new details
+                        mem = flight_memory.get(icao, {})
+                        if mem.get('origin') or mem.get('destination'):
+                            flight_info = {
+                                'origin': mem.get('origin'),
+                                'destination': mem.get('destination'),
+                                'origin_country': mem.get('origin_country'),
+                                'destination_country': mem.get('destination_country'),
+                                'airline_code': mem.get('airline_code'),
+                                'airline_name': mem.get('airline_name')
+                            }
+                            flight_db.update_flight_info(flight_id, flight_info)
+                
+                # Insert position (only if we have valid coordinates)
+                if enriched.get('lat') is not None and enriched.get('lon') is not None:
+                    flight_db.insert_position(flight_id, enriched)
+                
+            except Exception as e:
+                # Don't fail on database errors, just log them once per ICAO
+                if not hasattr(process_aircraft_data, '_db_error_logged'):
+                    process_aircraft_data._db_error_logged = set()
+                if icao not in process_aircraft_data._db_error_logged:
+                    print(f"⚠️  Flight tracking error for {icao}: {e}")
+                    process_aircraft_data._db_error_logged.add(icao)
         
         enriched_flights.append(enriched)
     
@@ -1052,8 +1175,1008 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/events':
             self.handle_sse()
+        elif self.path == '/api/replay/stats':
+            self.handle_replay_stats()
+        elif self.path.startswith('/api/replay/stream'):
+            self.handle_replay_stream()
+        elif self.path.startswith('/api/replay'):
+            self.handle_replay_api()
+        elif self.path.startswith('/api/flights'):
+            self.handle_flights_api()
+        elif self.path.startswith('/api/aircraft'):
+            self.handle_aircraft_api()
         else:
             super().do_GET()
+    
+    def handle_replay_stats(self):
+        """Handle replay stats request - returns metadata only, no flight data"""
+        try:
+            # Get database instance
+            global flight_db
+            if not flight_db:
+                config = load_config()
+                db_config = config.get('database', {})
+                if db_config.get('enabled', False):
+                    db_path = db_config.get('db_path', 'flights.db')
+                    if not os.path.exists(db_path):
+                        self.send_response(503)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Database file not found',
+                            'message': f'Database file "{db_path}" does not exist.'
+                        }).encode())
+                        return
+                    flight_db = FlightDatabase(db_path)
+                else:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Database not enabled',
+                        'message': 'Database is not enabled in config.json.'
+                    }).encode())
+                    return
+            
+            # Get stats only (no flight data)
+            stats = flight_db.get_database_stats()
+            
+            # Get sample timestamps to verify data exists
+            sample_timestamps = []
+            sample_flight_count = 0
+            try:
+                with flight_db.lock:
+                    import sqlite3
+                    conn = sqlite3.connect(flight_db.db_path)
+                    cursor = conn.cursor()
+                    
+                    # Get a few sample timestamps
+                    cursor.execute('''
+                        SELECT DISTINCT timestamp, COUNT(*) as flight_count
+                        FROM flight_snapshots
+                        GROUP BY timestamp
+                        ORDER BY timestamp
+                        LIMIT 5
+                    ''')
+                    samples = cursor.fetchall()
+                    for ts, count in samples:
+                        sample_timestamps.append({'timestamp': ts, 'flight_count': count})
+                        sample_flight_count += count
+                    
+                    # Count flights with position data
+                    cursor.execute('''
+                        SELECT COUNT(*) FROM flight_snapshots
+                        WHERE lat IS NOT NULL AND lon IS NOT NULL
+                    ''')
+                    flights_with_pos = cursor.fetchone()[0]
+                    
+                    conn.close()
+            except Exception as e:
+                print(f"⚠️  Error getting sample data: {e}")
+                flights_with_pos = 0
+            
+            response = {
+                'available_range': {
+                    'min_date': stats.get('min_date'),
+                    'max_date': stats.get('max_date')
+                },
+                'total_snapshots': stats.get('snapshot_count', 0),
+                'unique_flights': stats.get('unique_flights', 0),
+                'database_size_mb': stats.get('database_size_mb', 0),
+                'flights_with_position': flights_with_pos,
+                'sample_timestamps': sample_timestamps
+            }
+            
+            print(f"📊 Stats response: {stats.get('snapshot_count', 0)} snapshots, {flights_with_pos} flights with position")
+            if sample_timestamps:
+                print(f"   Sample timestamps: {sample_timestamps[0]['timestamp']} ({sample_timestamps[0]['flight_count']} flights)")
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            print(f"Replay stats error: {error_msg}")
+            print(traceback.format_exc())
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': error_msg}).encode())
+    
+    def handle_replay_stream(self):
+        """Handle SSE stream for replay playback"""
+        from urllib.parse import urlparse, parse_qs
+        
+        try:
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            
+            start_timestamp = params.get('start', [None])[0]
+            speed = float(params.get('speed', ['1'])[0])  # Playback speed multiplier
+            
+            if not start_timestamp:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Missing start parameter'}).encode())
+                return
+            
+            # Get database instance
+            global flight_db
+            if not flight_db:
+                config = load_config()
+                db_config = config.get('database', {})
+                if db_config.get('enabled', False):
+                    db_path = db_config.get('db_path', 'flights.db')
+                    flight_db = FlightDatabase(db_path)
+                else:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': 'Database not enabled'}).encode())
+                    return
+            
+            # Set up SSE headers
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+            
+            # Normalize start timestamp
+            from datetime import datetime, timedelta
+            try:
+                if '.' in start_timestamp or '+' in start_timestamp or start_timestamp.endswith('Z'):
+                    dt = datetime.fromisoformat(start_timestamp.replace('Z', '+00:00'))
+                    current_timestamp = dt.strftime('%Y-%m-%dT%H:%M:%S')
+                else:
+                    dt = datetime.strptime(start_timestamp, '%Y-%m-%dT%H:%M:%S')
+                    current_timestamp = dt.strftime('%Y-%m-%dT%H:%M:%S')
+            except Exception as e:
+                self.wfile.write(f"data: {json.dumps({'error': f'Invalid timestamp format: {e}'})}\n\n".encode())
+                return
+            
+            # Get available range
+            stats = flight_db.get_database_stats()
+            max_date = stats.get('max_date')
+            if max_date:
+                max_dt = datetime.fromisoformat(max_date.replace('Z', '+00:00'))
+            else:
+                max_dt = None
+            
+            # Stream snapshots
+            print(f"📡 Starting replay stream from {current_timestamp} at {speed}x speed")
+            
+            # Get list of actual timestamps that exist in the database (for smooth playback)
+            with flight_db.lock:
+                import sqlite3
+                conn = sqlite3.connect(flight_db.db_path)
+                cursor = conn.cursor()
+                
+                # Find the starting timestamp index
+                cursor.execute('''
+                    SELECT DISTINCT timestamp
+                    FROM flight_snapshots
+                    WHERE timestamp >= ?
+                    ORDER BY timestamp
+                ''', (current_timestamp,))
+                available_timestamps = [row[0] for row in cursor.fetchall()]
+                conn.close()
+            
+            if not available_timestamps:
+                print(f"   ⚠️  No snapshots found starting from {current_timestamp}")
+                end_data = {'type': 'end', 'message': 'No data available from this timestamp'}
+                self.wfile.write(f"data: {json.dumps(end_data)}\n\n".encode('utf-8'))
+                self.wfile.flush()
+                return
+            
+            print(f"   📊 Found {len(available_timestamps)} snapshots to replay")
+            timestamp_index = 0
+            
+            try:
+                while timestamp_index < len(available_timestamps):
+                    # Use actual timestamp from database (not incremented by 1 second)
+                    current_timestamp = available_timestamps[timestamp_index]
+                    
+                    # Get flights for current timestamp
+                    flights = flight_db.get_flights_at_time(current_timestamp, tolerance_seconds=1)
+                    
+                    # Note: Since we're using actual timestamps from the database,
+                    # we should always have flights. If not, it's likely a data issue.
+                    if len(flights) == 0 and timestamp_index < 3:
+                        print(f"   ⚠️  No flights found at timestamp {current_timestamp} (index {timestamp_index})")
+                    
+                    # Convert to flight format
+                    flight_data = []
+                    for row in flights:
+                        lat = row.get('lat')
+                        lon = row.get('lon')
+                        if lat is not None:
+                            try:
+                                lat = float(lat)
+                            except (ValueError, TypeError):
+                                lat = None
+                        if lon is not None:
+                            try:
+                                lon = float(lon)
+                            except (ValueError, TypeError):
+                                lon = None
+                        
+                        flight = {
+                            'icao': row.get('icao'),
+                            'callsign': row.get('callsign') or 'Unidentified',
+                            'lat': lat,
+                            'lon': lon,
+                            'altitude': row.get('altitude'),
+                            'speed': row.get('speed'),
+                            'track': row.get('track'),
+                            'heading': row.get('heading'),
+                            'vertical_rate': row.get('vertical_rate'),
+                            'squawk': row.get('squawk'),
+                            'distance': row.get('distance'),
+                            'origin': row.get('origin'),
+                            'destination': row.get('destination'),
+                            'origin_country': row.get('origin_country'),
+                            'destination_country': row.get('destination_country'),
+                            'aircraft_model': row.get('aircraft_model'),
+                            'aircraft_type': row.get('aircraft_type'),
+                            'aircraft_registration': row.get('aircraft_registration'),
+                            'airline_code': row.get('airline_code'),
+                            'airline_name': row.get('airline_name'),
+                            'status': row.get('status') or ('unidentified' if row.get('unidentified') else 'saved'),
+                            'unidentified': bool(row.get('unidentified')),
+                            'timestamp': row.get('timestamp')
+                        }
+                        flight_data.append(flight)
+                    
+                    # Count flights with position
+                    flights_with_pos = len([f for f in flight_data if f.get('lat') is not None and f.get('lon') is not None])
+                    
+                    # Send snapshot
+                    snapshot_data = {
+                        'type': 'snapshot',
+                        'timestamp': current_timestamp,
+                        'flights': flight_data,
+                        'count': len(flight_data)
+                    }
+                    
+                    if timestamp_index < 3 or timestamp_index % 50 == 0:  # Log first 3 and every 50th
+                        print(f"   📤 Snapshot {timestamp_index + 1}/{len(available_timestamps)}: {len(flight_data)} flights ({flights_with_pos} with position) at {current_timestamp}")
+                    
+                    message = f"data: {json.dumps(snapshot_data)}\n\n"
+                    self.wfile.write(message.encode('utf-8'))
+                    self.wfile.flush()
+                    
+                    # Move to next timestamp
+                    timestamp_index += 1
+                    
+                    # Check if we've reached the end
+                    if timestamp_index >= len(available_timestamps):
+                        # Send end signal
+                        end_data = {'type': 'end', 'message': 'Reached end of available data'}
+                        self.wfile.write(f"data: {json.dumps(end_data)}\n\n".encode('utf-8'))
+                        self.wfile.flush()
+                        break
+                    
+                    # Calculate sleep time based on actual time difference between snapshots
+                    if timestamp_index < len(available_timestamps):
+                        next_timestamp = available_timestamps[timestamp_index]
+                        try:
+                            # Parse timestamps (handle microseconds)
+                            if '.' in current_timestamp:
+                                current_dt = datetime.fromisoformat(current_timestamp.replace('Z', '+00:00'))
+                            else:
+                                current_dt = datetime.strptime(current_timestamp, '%Y-%m-%dT%H:%M:%S')
+                            
+                            if '.' in next_timestamp:
+                                next_dt = datetime.fromisoformat(next_timestamp.replace('Z', '+00:00'))
+                            else:
+                                next_dt = datetime.strptime(next_timestamp, '%Y-%m-%dT%H:%M:%S')
+                            
+                            time_diff = (next_dt - current_dt).total_seconds()
+                            
+                            # Sleep based on actual time difference, adjusted for playback speed
+                            # This makes playback smooth - if snapshots are 6 seconds apart, we wait 6/speed seconds
+                            sleep_time = max(0.05, time_diff / speed)  # Min 50ms to prevent too fast updates
+                            time.sleep(sleep_time)
+                        except Exception as e:
+                            # Fallback to 1 second if timestamp parsing fails
+                            print(f"   ⚠️  Error calculating sleep time: {e}, using 1s fallback")
+                            time.sleep(1.0 / speed)
+                    
+            except BrokenPipeError:
+                # Client disconnected
+                print("📡 Replay stream client disconnected")
+            except Exception as e:
+                print(f"⚠️  Replay stream error: {e}")
+                import traceback
+                traceback.print_exc()
+                
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            print(f"Replay stream setup error: {error_msg}")
+            print(traceback.format_exc())
+            try:
+                self.wfile.write(f"data: {json.dumps({'error': error_msg})}\n\n".encode())
+                self.wfile.flush()
+            except:
+                pass
+    
+    def handle_replay_api(self):
+        """Handle replay API requests for historical flight data"""
+        from urllib.parse import urlparse, parse_qs
+        
+        try:
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            
+            timestamp = params.get('timestamp', [None])[0]
+            start_time = params.get('start_time', [None])[0]
+            end_time = params.get('end_time', [None])[0]
+            icao = params.get('icao', [None])[0]
+            
+            # Get database instance
+            global flight_db
+            if not flight_db:
+                # Try to initialize database if not already initialized
+                config = load_config()
+                db_config = config.get('database', {})
+                if db_config.get('enabled', False):
+                    db_path = db_config.get('db_path', 'flights.db')
+                    try:
+                        # Check if database file exists
+                        if not os.path.exists(db_path):
+                            self.send_response(503)
+                            self.send_header('Content-Type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                'error': 'Database file not found',
+                                'message': f'Database file "{db_path}" does not exist. The database will be created when flight data is collected.'
+                            }).encode())
+                            return
+                        flight_db = FlightDatabase(db_path)
+                    except Exception as e:
+                        self.send_response(503)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Database initialization failed',
+                            'message': str(e)
+                        }).encode())
+                        return
+                else:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Database not enabled',
+                        'message': 'Database is not enabled in config.json. Set "database.enabled" to true to use replay functionality.'
+                    }).encode())
+                    return
+            
+            # Get database stats first (needed for available_range in response)
+            stats = flight_db.get_database_stats()
+            
+            # Query database based on parameters
+            flights = []
+            if timestamp:
+                # Normalize timestamp format - fix malformed timestamps like "20:34:00:00"
+                try:
+                    from datetime import datetime
+                    original_timestamp = timestamp
+                    
+                    # Fix malformed timestamps with extra colons (e.g., "2025-12-17T20:34:00:00")
+                    if 'T' in timestamp:
+                        parts = timestamp.split('T')
+                        if len(parts) == 2:
+                            date_part = parts[0]
+                            time_part = parts[1]
+                            
+                            # Split time part and take only first 3 components (HH:MM:SS)
+                            time_parts = time_part.split(':')
+                            if len(time_parts) > 3:
+                                # Has extra components, take only HH:MM:SS
+                                time_parts = time_parts[:3]
+                                # Remove any trailing empty strings
+                                time_parts = [p for p in time_parts if p]
+                                # Ensure we have exactly 3 parts
+                                while len(time_parts) < 3:
+                                    time_parts.append('00')
+                                time_part = ':'.join(time_parts[:3])
+                            
+                            timestamp = f"{date_part}T{time_part}"
+                    
+                    # Remove microseconds and timezone if present
+                    if '.' in timestamp:
+                        timestamp = timestamp.split('.')[0]
+                    if '+' in timestamp:
+                        timestamp = timestamp.split('+')[0]
+                    if timestamp.endswith('Z'):
+                        timestamp = timestamp[:-1]
+                    
+                    # Validate and normalize format
+                    try:
+                        dt = datetime.strptime(timestamp, '%Y-%m-%dT%H:%M:%S')
+                        timestamp = dt.strftime('%Y-%m-%dT%H:%M:%S')
+                    except ValueError:
+                        # If parsing fails, try ISO format
+                        try:
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            timestamp = dt.strftime('%Y-%m-%dT%H:%M:%S')
+                        except:
+                            print(f"⚠️  Could not parse timestamp: {original_timestamp}")
+                    
+                    if original_timestamp != timestamp:
+                        print(f"🔧 Normalized timestamp: {original_timestamp} -> {timestamp}")
+                    print(f"🔍 Replay query: timestamp={timestamp}")
+                except Exception as e:
+                    print(f"⚠️  Error parsing timestamp {timestamp}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # Get flights at specific timestamp (or closest match within 5 seconds)
+                # Use larger tolerance since database timestamps have microseconds
+                flights = flight_db.get_flights_at_time(timestamp, tolerance_seconds=5)
+                print(f"📊 Found {len(flights)} flights for timestamp {timestamp}")
+                
+                # Debug: Show sample flight data if available
+                if flights:
+                    sample = flights[0]
+                    print(f"   Sample flight: ICAO={sample.get('icao')}, callsign={sample.get('callsign')}, lat={sample.get('lat')}, lon={sample.get('lon')}")
+                else:
+                    print(f"   ⚠️  No flights found for this timestamp")
+            elif start_time and end_time:
+                # Limit range queries to prevent huge responses
+                # Only allow small ranges (max 1 hour) or require icao filter
+                from datetime import datetime
+                try:
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+                    duration = (end_dt - start_dt).total_seconds()
+                    
+                    # If no ICAO filter and range > 1 hour, reject
+                    if not icao and duration > 3600:
+                        self.send_response(400)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Range too large',
+                            'message': 'Time range queries without ICAO filter are limited to 1 hour. Use /api/replay/stream for longer ranges.'
+                        }).encode())
+                        return
+                except:
+                    pass  # If parsing fails, continue (will fail later anyway)
+                
+                # Get flights in time range
+                if icao:
+                    flights = flight_db.get_flight_history(icao, start_time, end_time)
+                else:
+                    flights = flight_db.get_flights_by_time_range(start_time, end_time)
+            else:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Missing required parameters'}).encode())
+                return
+            
+            # Limit response size for single timestamp queries (prevent huge responses)
+            max_flights_per_response = 200
+            if len(flights) > max_flights_per_response:
+                print(f"⚠️  Limiting response to {max_flights_per_response} flights (found {len(flights)})")
+                flights = flights[:max_flights_per_response]
+            
+            # Convert database rows to flight format
+            flight_data = []
+            flights_with_position = 0
+            for row in flights:
+                # Convert None/null values to null (JSON null)
+                lat = row.get('lat')
+                lon = row.get('lon')
+                
+                # Handle SQLite NULL values (which come through as None in Python)
+                if lat is not None:
+                    try:
+                        lat = float(lat)
+                    except (ValueError, TypeError):
+                        lat = None
+                if lon is not None:
+                    try:
+                        lon = float(lon)
+                    except (ValueError, TypeError):
+                        lon = None
+                
+                if lat is not None and lon is not None:
+                    flights_with_position += 1
+                
+                flight = {
+                    'icao': row.get('icao'),
+                    'callsign': row.get('callsign') or 'Unidentified',
+                    'lat': lat,
+                    'lon': lon,
+                    'altitude': row.get('altitude'),
+                    'speed': row.get('speed'),
+                    'track': row.get('track'),
+                    'heading': row.get('heading'),
+                    'vertical_rate': row.get('vertical_rate'),
+                    'squawk': row.get('squawk'),
+                    'distance': row.get('distance'),
+                    'origin': row.get('origin'),
+                    'destination': row.get('destination'),
+                    'origin_country': row.get('origin_country'),
+                    'destination_country': row.get('destination_country'),
+                    'aircraft_model': row.get('aircraft_model'),
+                    'aircraft_type': row.get('aircraft_type'),
+                    'aircraft_registration': row.get('aircraft_registration'),
+                    'airline_code': row.get('airline_code'),
+                    'airline_name': row.get('airline_name'),
+                    'status': row.get('status') or ('unidentified' if row.get('unidentified') else 'saved'),
+                    'unidentified': bool(row.get('unidentified')),
+                    'timestamp': row.get('timestamp')
+                }
+                flight_data.append(flight)
+            
+            print(f"   📍 {flights_with_position} of {len(flight_data)} flights have position data")
+            
+            # Stats already retrieved above if timestamp query, otherwise get them now
+            if not 'stats' in locals():
+                stats = flight_db.get_database_stats()
+            
+            # Debug: log what we're returning
+            print(f"📤 Replay API response: {len(flight_data)} flights")
+            print(f"   Available range: {stats.get('min_date')} to {stats.get('max_date')}")
+            print(f"   Total snapshots in DB: {stats.get('snapshot_count', 0)}")
+            print(f"   Response size: ~{len(json.dumps(flight_data))} bytes")
+            
+            # If no flights found, provide helpful message
+            if len(flight_data) == 0:
+                print(f"   ⚠️  No flights found. Query was for timestamp: {timestamp or start_time}")
+                if stats.get('snapshot_count', 0) == 0:
+                    print(f"   ℹ️  Database appears to be empty - no snapshots saved yet")
+                else:
+                    print(f"   ℹ️  Database has {stats.get('snapshot_count', 0)} snapshots but none match the requested time")
+            
+            response = {
+                'flights': flight_data,
+                'count': len(flight_data),
+                'timestamp': timestamp or start_time,
+                'available_range': {
+                    'min_date': stats.get('min_date'),
+                    'max_date': stats.get('max_date')
+                },
+                'total_snapshots': stats.get('snapshot_count', 0)
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+            
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            print(f"Replay API error: {error_msg}")
+            print(traceback.format_exc())
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': error_msg}).encode())
+    
+    def handle_flights_api(self):
+        """Handle flights API requests"""
+        from urllib.parse import urlparse, parse_qs
+        import re
+        
+        try:
+            print(f"📡📡📡 Flights API request received: {self.path}")
+            print(f"   Request method: {self.command}")
+            print(f"   Client: {self.client_address}")
+            
+            # Quick test: return immediately without database
+            if '?test=1' in self.path:
+                print(f"   ✓ Test endpoint - returning immediately")
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'test': 'ok', 'message': 'Server is responding'}).encode())
+                print(f"   ✓ Test response sent")
+                return
+            
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            print(f"   Parsed path: {parsed.path}, query: {parsed.query}")
+            
+            # Parse path: /api/flights/{id}/positions or /api/flights/{id} or /api/flights
+            path_parts = parsed.path.strip('/').split('/')
+            print(f"   Path parts: {path_parts}")
+            
+            # Get database instance
+            global flight_db
+            print(f"   Checking flight_db: {flight_db is not None}")
+            if not flight_db:
+                config = load_config()
+                db_config = config.get('database', {})
+                if db_config.get('enabled', False):
+                    db_path = db_config.get('db_path', 'flights.db')
+                    if not os.path.exists(db_path):
+                        self.send_response(503)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Database not enabled',
+                            'message': f'Database file "{db_path}" does not exist.'
+                        }).encode())
+                        return
+                    flight_db = FlightDatabase(db_path)
+                else:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Database not enabled',
+                        'message': 'Database is disabled in config.json'
+                    }).encode())
+                    return
+            
+            # Route: /api/flights/{id}/positions
+            if len(path_parts) >= 4 and path_parts[2].isdigit() and path_parts[3] == 'positions':
+                flight_id = int(path_parts[2])
+                print(f"   📍 Handling positions request for flight {flight_id}")
+                start_time = params.get('start_time', [None])[0]
+                end_time = params.get('end_time', [None])[0]
+                limit = params.get('limit', [None])[0]
+                if limit:
+                    limit = int(limit)
+                
+                print(f"   📍 Fetching positions (limit={limit})...")
+                import time
+                pos_start = time.time()
+                positions = flight_db.get_flight_positions(flight_id, start_time, end_time, limit)
+                pos_elapsed = time.time() - pos_start
+                print(f"   ✓ Retrieved {len(positions)} positions in {pos_elapsed:.3f}s")
+                
+                # Get flight info for response
+                flight = flight_db.get_flight(flight_id)
+                if not flight:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Flight not found',
+                        'message': f'Flight #{flight_id} does not exist'
+                    }).encode())
+                    return
+                
+                response = {
+                    'flight_id': flight_id,
+                    'callsign': flight.get('callsign'),
+                    'aircraft_icao': flight.get('aircraft_icao'),
+                    'origin': flight.get('origin'),
+                    'destination': flight.get('destination'),
+                    'start_time': flight.get('start_time'),
+                    'end_time': flight.get('end_time'),
+                    'status': flight.get('status'),
+                    'positions': positions,
+                    'count': len(positions)
+                }
+                
+                response_json = json.dumps(response)
+                print(f"   ✓ Returning {len(positions)} positions ({len(response_json)} bytes)")
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(response_json.encode())))
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(response_json.encode())
+                self.wfile.flush()
+                print(f"   ✓ Positions response sent")
+                
+            # Route: /api/flights/{id}
+            elif len(path_parts) >= 3 and path_parts[2].isdigit():
+                flight_id = int(path_parts[2])
+                
+                flight = flight_db.get_flight(flight_id)
+                if not flight:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Flight not found',
+                        'message': f'Flight #{flight_id} does not exist'
+                    }).encode())
+                    return
+                
+                # Get position count (efficient)
+                position_count = flight_db.get_flight_position_count(flight_id)
+                
+                # Format flight response
+                response = {
+                    'id': flight.get('id'),
+                    'callsign': flight.get('callsign'),
+                    'aircraft_icao': flight.get('aircraft_icao'),
+                    'aircraft': {
+                        'icao': flight.get('aircraft_icao'),
+                        'registration': flight.get('registration'),
+                        'type': flight.get('type'),
+                        'model': flight.get('model'),
+                        'manufacturer': flight.get('manufacturer')
+                    },
+                    'origin': flight.get('origin'),
+                    'destination': flight.get('destination'),
+                    'origin_country': flight.get('origin_country'),
+                    'destination_country': flight.get('destination_country'),
+                    'airline_code': flight.get('airline_code'),
+                    'airline_name': flight.get('airline_name'),
+                    'start_time': flight.get('start_time'),
+                    'end_time': flight.get('end_time'),
+                    'status': flight.get('status'),
+                    'position_count': position_count
+                }
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode())
+                
+            # Route: /api/flights (list flights)
+            else:
+                print(f"   ✓✓✓ Handling list flights route (no ID in path)")
+                start_time = params.get('start_time', [None])[0]
+                end_time = params.get('end_time', [None])[0]
+                callsign = params.get('callsign', [None])[0]
+                icao = params.get('icao', [None])[0]
+                active_only = params.get('active_only', ['false'])[0].lower() == 'true'
+                limit = params.get('limit', [None])[0]
+                if limit:
+                    try:
+                        limit = int(limit)
+                    except ValueError:
+                        limit = 10  # Default
+                else:
+                    limit = 10  # Default
+                
+                print(f"   Query params: limit={limit}, active_only={active_only}")
+                print(f"   Calling flight_db.get_flights()...")
+                
+                import time
+                db_start = time.time()
+                try:
+                    flights = flight_db.get_flights(
+                        start_time=start_time,
+                        end_time=end_time,
+                        callsign=callsign,
+                        icao=icao,
+                        active_only=active_only,
+                        limit=limit
+                    )
+                    db_elapsed = time.time() - db_start
+                    print(f"   ✓ flight_db.get_flights() returned {len(flights)} flights in {db_elapsed:.3f}s")
+                except Exception as e:
+                    db_elapsed = time.time() - db_start
+                    print(f"   ✗ Error in flight_db.get_flights() after {db_elapsed:.3f}s: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Send error response instead of raising
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({'error': str(e)}).encode())
+                    return
+                
+                print(f"   Formatting {len(flights)} flights for response...")
+                
+                # Skip position counts for now - they're slow and not critical for the list view
+                # Users can see position counts when they expand a flight
+                position_counts = {}
+                
+                # Format flights for response
+                flight_list = []
+                for idx, flight in enumerate(flights):
+                    if idx == 0:
+                        print(f"   First flight: id={flight.get('id')}, callsign={flight.get('callsign')}")
+                    # Set position count to None - will be fetched on demand when user expands
+                    position_count = None
+                    
+                    flight_data = {
+                        'id': flight.get('id'),
+                        'callsign': flight.get('callsign'),
+                        'aircraft_icao': flight.get('aircraft_icao'),
+                        'aircraft': {
+                            'icao': flight.get('aircraft_icao'),
+                            'registration': flight.get('registration'),
+                            'type': flight.get('type'),
+                            'model': flight.get('model'),
+                            'manufacturer': flight.get('manufacturer')
+                        },
+                        'origin': flight.get('origin'),
+                        'destination': flight.get('destination'),
+                        'origin_country': flight.get('origin_country'),
+                        'destination_country': flight.get('destination_country'),
+                        'airline_code': flight.get('airline_code'),
+                        'airline_name': flight.get('airline_name'),
+                        'start_time': flight.get('start_time'),
+                        'end_time': flight.get('end_time'),
+                        'status': flight.get('status'),
+                        'position_count': position_count
+                    }
+                    flight_list.append(flight_data)
+                
+                response = {
+                    'flights': flight_list,
+                    'count': len(flight_list)
+                }
+                
+                response_json = json.dumps(response)
+                print(f"   ✓ Returning {len(flight_list)} flights (response size: {len(response_json)} bytes)")
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')  # Add CORS header
+                self.send_header('Content-Length', str(len(response_json.encode())))
+                self.end_headers()
+                self.wfile.write(response_json.encode())
+                self.wfile.flush()  # Ensure response is sent immediately
+                print(f"   ✓ Response sent successfully ({len(response_json)} bytes)")
+                
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            print(f"Flights API error: {error_msg}")
+            print(traceback.format_exc())
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': error_msg}).encode())
+    
+    def handle_aircraft_api(self):
+        """Handle aircraft API requests"""
+        from urllib.parse import urlparse, parse_qs
+        
+        try:
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            
+            # Parse path: /api/aircraft/{icao} or /api/aircraft
+            path_parts = parsed.path.strip('/').split('/')
+            
+            # Get database instance
+            global flight_db
+            if not flight_db:
+                config = load_config()
+                db_config = config.get('database', {})
+                if db_config.get('enabled', False):
+                    db_path = db_config.get('db_path', 'flights.db')
+                    if not os.path.exists(db_path):
+                        self.send_response(503)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Database not enabled',
+                            'message': f'Database file "{db_path}" does not exist.'
+                        }).encode())
+                        return
+                    flight_db = FlightDatabase(db_path)
+                else:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Database not enabled',
+                        'message': 'Database is disabled in config.json'
+                    }).encode())
+                    return
+            
+            # Route: /api/aircraft/{icao}/flights or /api/aircraft/{icao}
+            if len(path_parts) >= 3:
+                icao = path_parts[2]
+                
+                # Check if requesting flights
+                if len(path_parts) >= 4 and path_parts[3] == 'flights':
+                    limit = params.get('limit', [None])[0]
+                    if limit:
+                        limit = int(limit)
+                    
+                    flights = flight_db.get_aircraft_flights(icao, limit=limit)
+                    
+                    # Format flights
+                    flight_list = []
+                    for flight in flights:
+                        flight_data = {
+                            'id': flight.get('id'),
+                            'callsign': flight.get('callsign'),
+                            'origin': flight.get('origin'),
+                            'destination': flight.get('destination'),
+                            'start_time': flight.get('start_time'),
+                            'end_time': flight.get('end_time'),
+                            'status': flight.get('status')
+                        }
+                        flight_list.append(flight_data)
+                    
+                    aircraft = flight_db.get_aircraft(icao)
+                    if not aircraft:
+                        self.send_response(404)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Aircraft not found',
+                            'message': f'Aircraft {icao} does not exist'
+                        }).encode())
+                        return
+                    
+                    response = {
+                        'aircraft': {
+                            'icao': aircraft.get('icao'),
+                            'registration': aircraft.get('registration'),
+                            'type': aircraft.get('type'),
+                            'model': aircraft.get('model'),
+                            'manufacturer': aircraft.get('manufacturer'),
+                            'first_seen_at': aircraft.get('first_seen_at'),
+                            'last_seen_at': aircraft.get('last_seen_at')
+                        },
+                        'flights': flight_list,
+                        'count': len(flight_list)
+                    }
+                    
+                else:
+                    # Just get aircraft info
+                    aircraft = flight_db.get_aircraft(icao)
+                    if not aircraft:
+                        self.send_response(404)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Aircraft not found',
+                            'message': f'Aircraft {icao} does not exist'
+                        }).encode())
+                        return
+                    
+                    response = {
+                        'icao': aircraft.get('icao'),
+                        'registration': aircraft.get('registration'),
+                        'type': aircraft.get('type'),
+                        'model': aircraft.get('model'),
+                        'manufacturer': aircraft.get('manufacturer'),
+                        'first_seen_at': aircraft.get('first_seen_at'),
+                        'last_seen_at': aircraft.get('last_seen_at')
+                    }
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode())
+                
+            # Route: /api/aircraft (list aircraft)
+            else:
+                limit = params.get('limit', [None])[0]
+                if limit:
+                    limit = int(limit)
+                
+                aircraft_list = flight_db.list_aircraft(limit=limit)
+                
+                # Format aircraft for response
+                response = {
+                    'aircraft': aircraft_list,
+                    'count': len(aircraft_list)
+                }
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode())
+                
+        except Exception as e:
+            import traceback
+            error_msg = str(e)
+            print(f"Aircraft API error: {error_msg}")
+            print(traceback.format_exc())
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': error_msg}).encode())
 
     def handle_sse(self):
         global latest_flight_data
@@ -1108,11 +2231,38 @@ def run_http_server(host, port):
 
 async def flight_data_loop(config):
     """Main loop for collecting and broadcasting flight data"""
-    global latest_flight_data
+    global latest_flight_data, flight_db
     
     dump1090_url = config['dump1090_url']
     consecutive_errors = 0
     max_errors = 3
+    
+    # Initialize database if enabled
+    db_config = config.get('database', {})
+    if db_config.get('enabled', False):
+        db_path = db_config.get('db_path', 'flights.db')
+        flight_db = FlightDatabase(db_path)
+        snapshot_interval = db_config.get('snapshot_interval_seconds', 5)
+        cleanup_days = db_config.get('cleanup_days', 7)
+        last_snapshot_time = time.time()
+        print(f"💾 Database enabled: {db_path}")
+        print(f"   Snapshot interval: {snapshot_interval} seconds")
+        print(f"   Cleanup: Automatic cleanup every hour, keeping last {cleanup_days} days")
+        
+        # Run initial cleanup on startup
+        try:
+            stats_before = flight_db.get_database_stats()
+            print(f"   Current database: {stats_before['snapshot_count']} snapshots, {stats_before['database_size_mb']} MB")
+            snapshots_deleted, events_deleted = flight_db.cleanup_old_data(cleanup_days)
+            if snapshots_deleted > 0 or events_deleted > 0:
+                stats_after = flight_db.get_database_stats()
+                print(f"   After startup cleanup: {stats_after['snapshot_count']} snapshots, {stats_after['database_size_mb']} MB")
+        except Exception as e:
+            print(f"⚠️  Initial cleanup error: {e}")
+    else:
+        flight_db = None
+        snapshot_interval = None
+        last_snapshot_time = None
     
     print("Starting flight data collection...")
     print(f"Fetching from: {dump1090_url}")
@@ -1133,6 +2283,18 @@ async def flight_data_loop(config):
                 callsign = debug_flight.get('callsign', debug_flight.get('icao', 'Unknown'))
                 print(f"📡 Update: {callsign} at {debug_flight.get('lat', 0):.5f}, {debug_flight.get('lon', 0):.5f} (alt: {debug_flight.get('altitude', 'N/A')}, speed: {debug_flight.get('speed', 'N/A')})")
             
+            # Save snapshot to database if enabled
+            if flight_db and snapshot_interval:
+                current_time = time.time()
+                if current_time - last_snapshot_time >= snapshot_interval:
+                    try:
+                        flights = flight_update.get('flights', [])
+                        if flights:
+                            flight_db.save_snapshot(flights)
+                            last_snapshot_time = current_time
+                    except Exception as e:
+                        print(f"⚠️  Database error: {e}")
+            
             broadcast_sse(flight_update)
         else:
             consecutive_errors += 1
@@ -1145,6 +2307,10 @@ async def flight_data_loop(config):
         # Print API call summary every 60 seconds
         if not hasattr(flight_data_loop, '_last_summary_time'):
             flight_data_loop._last_summary_time = time.time()
+        
+        # Database cleanup check (every hour)
+        if not hasattr(flight_data_loop, '_last_cleanup_time'):
+            flight_data_loop._last_cleanup_time = time.time()
         
         current_time = time.time()
         if current_time - flight_data_loop._last_summary_time >= 60:  # Every 60 seconds
@@ -1164,6 +2330,42 @@ async def flight_data_loop(config):
                         callsign = flight_memory.get(icao, {}).get('callsign', 'Unknown')
                         print(f"  {callsign} ({icao}): {tracker['route_calls']} route calls, {tracker['aircraft_calls']} aircraft calls (first: {tracker['first_call']}, last: {tracker['last_call']})")
                     print("=" * 80 + "\n")
+            
+            # Database stats
+            if flight_db:
+                try:
+                    stats = flight_db.get_database_stats()
+                    print(f"💾 Database: {stats['snapshot_count']} snapshots, {stats['unique_flights']} flights, {stats['database_size_mb']} MB")
+                except Exception as e:
+                    pass
+        
+        # Database cleanup (every hour)
+        if flight_db and current_time - flight_data_loop._last_cleanup_time >= 3600:  # Every hour
+            flight_data_loop._last_cleanup_time = current_time
+            try:
+                db_config = config.get('database', {})
+                cleanup_days = db_config.get('cleanup_days', 7)
+                
+                # Get stats before cleanup
+                stats_before = flight_db.get_database_stats()
+                
+                # Run cleanup
+                snapshots_deleted, events_deleted = flight_db.cleanup_old_data(cleanup_days)
+                
+                # Get stats after cleanup
+                stats_after = flight_db.get_database_stats()
+                
+                if snapshots_deleted > 0 or events_deleted > 0:
+                    print(f"🧹 Database cleanup complete:")
+                    print(f"   Before: {stats_before['snapshot_count']} snapshots, {stats_before['database_size_mb']} MB")
+                    print(f"   After: {stats_after['snapshot_count']} snapshots, {stats_after['database_size_mb']} MB")
+                    print(f"   Deleted: {snapshots_deleted} snapshots, {events_deleted} events (older than {cleanup_days} days)")
+                else:
+                    print(f"🧹 Database cleanup: No data older than {cleanup_days} days to delete")
+            except Exception as e:
+                print(f"⚠️  Database cleanup error: {e}")
+                import traceback
+                traceback.print_exc()
         
         await asyncio.sleep(1)  # Update every 1 second
 
