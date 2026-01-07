@@ -100,20 +100,29 @@
 
         .nav-links a {
             text-decoration: none;
-            color: var(--text-primary);
-            padding: 10px 16px;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            font-weight: 500;
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.6);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="dark"] .nav-links a {
+            background: rgba(26, 31, 46, 0.6);
         }
 
         .nav-links a:hover {
             background: var(--nav-hover);
+            color: var(--accent-color);
+            box-shadow: 0 4px 8px rgba(62, 145, 190, 0.15);
         }
 
         .nav-links a.active {
             background: var(--nav-active-bg);
             color: var(--text-white);
+            box-shadow: 0 6px 12px rgba(62, 145, 190, 0.3);
         }
 
         .theme-toggle-container {
@@ -153,6 +162,52 @@
             width: 24px;
             height: 24px;
             color: var(--text-primary);
+            transition: color 0.3s ease;
+        }
+        
+        .status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-indicator.connected {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+        
+        .status-indicator.disconnected {
+            background: #ef4444;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 30px;
+            font-size: 0.9em;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--accent-color);
+            transition: color 0.3s ease;
+        }
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.85em;
             transition: color 0.3s ease;
         }
         
@@ -217,7 +272,7 @@
             overflow: hidden;
             transition: background 0.3s ease;
         }
-        
+
         .day-header {
             background: var(--card-footer-bg);
             padding: 15px 20px;
@@ -292,6 +347,29 @@
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
         }
         
+        .flight-card.collapsed .flight-body {
+            display: none;
+        }
+        
+        .flight-header {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .flight-header:hover {
+            opacity: 0.95;
+        }
+        
+        .expand-icon {
+            transition: transform 0.3s ease;
+            font-size: 1.2em;
+            margin-left: 10px;
+        }
+        
+        .flight-card.expanded .expand-icon {
+            transform: rotate(180deg);
+        }
+        
         .flight-header {
             background: var(--card-header-bg);
             color: var(--text-white);
@@ -333,10 +411,177 @@
         
         .flight-body {
             padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .flight-content-row {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        
+        .flight-details {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .flight-detail-item {
+            padding: 12px;
+            background: var(--card-footer-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .flight-detail-item label {
+            display: block;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .flight-detail-item value {
+            display: block;
+            font-size: 1.1em;
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        
+        .aircraft-photo-container {
+            margin-bottom: 15px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            background: var(--card-footer-bg);
+            position: relative;
+        }
+        
+        .aircraft-photo {
+            width: 100%;
+            height: 350px;
+            object-fit: cover;
+            display: block;
+            background: var(--card-footer-bg);
+        }
+        
+        .aircraft-photo-placeholder {
+            width: 100%;
+            height: 350px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-footer-bg);
+            color: var(--text-muted);
+            font-size: 0.9em;
+        }
+        
+        .aircraft-photo-loading {
+            width: 100%;
+            height: 350px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-footer-bg);
+            color: var(--text-muted);
+            font-size: 0.85em;
+        }
+        
+        .aircraft-photo-info {
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 0.75em;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .aircraft-photo-info a {
+            color: white;
+            text-decoration: underline;
+        }
+        
+        /* Route section with plane graphic (matching other pages) */
+        .flight-route-display {
+            padding: 20px;
+            position: relative;
+            background: var(--card-footer-bg);
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 16px;
+            align-items: center;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 15px;
+        }
+        
+        .route-section {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .route-section-label {
+            font-size: 0.7em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .route-airport-code {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--route-color);
+            margin-bottom: 4px;
+            transition: color 0.3s ease;
+        }
+        
+        .route-country-info {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.3s ease;
+        }
+        
+        .route-plane-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 0 8px;
+        }
+        
+        .route-plane-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(to right, var(--route-color) 0%, transparent 50%, var(--route-color) 100%);
+            border-top: 1px dashed rgba(62, 145, 190, 0.3);
+        }
+        
+        .route-plane-icon {
+            width: 48px;
+            height: 48px;
+            position: relative;
+            z-index: 1;
+            background: var(--card-footer-bg);
+            padding: 4px;
+            transition: background 0.3s ease;
         }
         
         .flight-map-container {
-            margin-bottom: 20px;
+            flex: 1;
+            min-width: 400px;
             border-radius: 8px;
             overflow: hidden;
             border: 1px solid var(--border-color);
@@ -490,17 +735,43 @@
             .positions-table td {
                 padding: 8px 6px;
             }
+            
+            .flight-content-row {
+                flex-direction: column;
+            }
+            
+            .flight-map-container {
+                min-width: 100%;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>✈️ Flight History</h1>
+            <div>
+                <h1>✈️ Flight History</h1>
+            </div>
             <div class="nav-links">
                 <a href="index.html">Flight List</a>
                 <a href="index-maps.html">Flight Map</a>
                 <a href="index-replay.html" class="active">History</a>
+            </div>
+            <div class="status">
+                <div>
+                    <span class="status-indicator disconnected" id="statusIndicator"></span>
+                    <span id="connectionStatus">Disconnected</span>
+                </div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="activeFlights">0</div>
+                        <div class="stat-label">Active Flights</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="totalFlights">0</div>
+                        <div class="stat-label">Total Detected</div>
+                    </div>
+                </div>
             </div>
             <div class="theme-toggle-container">
                 <div class="theme-toggle-icon" id="themeIcon">
@@ -519,13 +790,7 @@
                 <div class="status-item">
                     <strong id="flightCount">0</strong> flights
             </div>
-                <div class="status-item">
-                    <strong id="totalPositions">0</strong> total positions
                 </div>
-                <div class="status-item">
-                    Last updated: <strong id="lastUpdated">Never</strong>
-                </div>
-            </div>
             <button class="refresh-btn" id="refreshBtn" onclick="loadFlights()">
                 🔄 Refresh
                     </button>
@@ -545,6 +810,96 @@
     <script>
         let flights = [];
         const flightMaps = {}; // Store flight maps
+        
+        // Connection status and stats
+        const EVENTS_URL = window.FLIGHT_TRACKER_EVENTS_URL || `${window.location.origin}/events`;
+        let eventSource = null;
+        let reconnectTimer = null;
+        let reconnectDelay = 1000;
+        const MAX_RECONNECT_DELAY = 30000;
+        
+        function updateConnectionStatus(connected, message) {
+            const indicator = document.getElementById('statusIndicator');
+            const status = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                indicator.className = 'status-indicator connected';
+                status.textContent = message || 'Connected';
+            } else {
+                indicator.className = 'status-indicator disconnected';
+                status.textContent = message || 'Disconnected';
+            }
+        }
+        
+        function updateStats(stats) {
+            if (stats.active !== undefined) {
+                document.getElementById('activeFlights').textContent = stats.active || 0;
+            }
+            if (stats.total !== undefined) {
+                document.getElementById('totalFlights').textContent = stats.total || 0;
+            }
+        }
+        
+        function scheduleReconnect() {
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+            }
+            
+            reconnectTimer = setTimeout(() => {
+                connectToEventStream();
+            }, reconnectDelay);
+            
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+        }
+        
+        function connectToEventStream() {
+            if (eventSource) {
+                return;
+            }
+            
+            updateConnectionStatus(false, 'Connecting...');
+            
+            try {
+                eventSource = new EventSource(EVENTS_URL);
+                
+                eventSource.onopen = () => {
+                    console.log('SSE connected');
+                    updateConnectionStatus(true);
+                    reconnectDelay = 1000;
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
+                };
+                
+                eventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'flight_update') {
+                            updateStats(data.stats || {});
+                        }
+                        } catch (e) {
+                        console.error('Error parsing SSE message:', e);
+                    }
+                };
+                
+                eventSource.onerror = () => {
+                    updateConnectionStatus(false, 'Disconnected (retrying...)');
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    scheduleReconnect();
+                };
+            } catch (error) {
+                console.error('SSE connection error:', error);
+                updateConnectionStatus(false, 'Connection error');
+                scheduleReconnect();
+            }
+        }
+        
+        // Initial connection
+        connectToEventStream();
         
         // Theme management
         function toggleTheme() {
@@ -663,7 +1018,7 @@
                 
                 if (flights.length === 0) {
                     console.warn('⚠️  No flights in response, but that\'s OK');
-                } else {
+                    } else {
                     console.log('✅ First flight:', flights[0]);
                 }
                 
@@ -679,20 +1034,12 @@
                         </div>
                     `;
                     document.getElementById('flightCount').textContent = '0';
-                    document.getElementById('totalPositions').textContent = '0';
-                        } else {
+                } else {
                     console.log('📋 Rendering flights list...');
                     try {
                         renderFlights();
                         console.log('✅ renderFlights() completed');
                         document.getElementById('flightCount').textContent = flights.length;
-                        
-                        // Calculate total positions
-                        let totalPositions = 0;
-                        for (const flight of flights) {
-                            totalPositions += flight.position_count || 0;
-                        }
-                        document.getElementById('totalPositions').textContent = totalPositions.toLocaleString();
                         console.log('✅ All rendering completed');
                     } catch (renderError) {
                         console.error('❌ Error in renderFlights():', renderError);
@@ -705,8 +1052,6 @@
                         `;
                     }
                 }
-                
-                document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString();
                 
             } catch (error) {
                 console.error('❌ Error loading flights:', error);
@@ -838,71 +1183,47 @@
                     </div>
                     <div class="day-content">
                         ${day.flights.map(flight => `
-                            <div class="flight-card" data-flight-id="${flight.id}">
-                                <div class="flight-header">
-                                    <div>
-                                        <h3>${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})</h3>
-                                        ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
-                                    </div>
-                                    <div class="flight-info">
-                                        ${flight.origin && flight.destination ? `
-                                            <div class="flight-info-item">
-                                                <label>Route</label>
-                                                <value>${flight.origin} → ${flight.destination}</value>
-                                            </div>
-                                        ` : ''}
-                                        ${flight.position_count !== null && flight.position_count !== undefined ? `
-                                            <div class="flight-info-item">
-                                                <label>Positions</label>
-                                                <value>${flight.position_count.toLocaleString()}</value>
-                                            </div>
-                                        ` : ''}
-                                        <div class="flight-info-item">
-                                            <label>Started</label>
-                                            <value>${formatDateTime(flight.start_time)}</value>
+                            <div class="flight-card collapsed" data-flight-id="${flight.id}" id="flight-card-${flight.id}">
+                                <div class="flight-header" onclick="toggleFlightCard(${flight.id})">
+                                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                        <div>
+                                            <h3 style="display: flex; align-items: center; gap: 10px; margin: 0;">
+                                                <span class="expand-icon">▼</span>
+                                                ${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})
+                                            </h3>
+                                            ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
                                         </div>
-                                        ${flight.end_time ? `
+                                        <div class="flight-info">
+                                            ${flight.origin && flight.destination ? `
+                                                <div class="flight-info-item">
+                                                    <label>Route</label>
+                                                    <value>${flight.origin} → ${flight.destination}</value>
+                                                </div>
+                                            ` : ''}
+                                            ${flight.position_count !== null && flight.position_count !== undefined ? `
+                                                <div class="flight-info-item">
+                                                    <label>Positions</label>
+                                                    <value>${flight.position_count.toLocaleString()}</value>
+                                                </div>
+                                            ` : ''}
                                             <div class="flight-info-item">
-                                                <label>Ended</label>
-                                                <value>${formatDateTime(flight.end_time)}</value>
+                                                <label>Started</label>
+                                                <value>${formatDateTime(flight.start_time)}</value>
                                             </div>
-                                        ` : ''}
+                                            ${flight.end_time ? `
+                                                <div class="flight-info-item">
+                                                    <label>Ended</label>
+                                                    <value>${formatDateTime(flight.end_time)}</value>
+                                                </div>
+                                            ` : ''}
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="flight-body">
-                                    <div class="flight-map-container">
-                                        <div class="map-loading" id="map-loading-${flight.id}">Loading flight path...</div>
-                                        <div class="flight-map" id="flight-map-${flight.id}" style="display: none;"></div>
+                                <div class="flight-body" id="flight-body-${flight.id}">
+                                    <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                                        <div class="loading-spinner" style="margin: 0 auto 20px;"></div>
+                                        <div>Click header to load flight details...</div>
                                     </div>
-                                    <div class="positions-header">
-                                        <h4>Position Data</h4>
-                                        <button class="toggle-positions-btn" onclick="togglePositions(${flight.id})" id="btn-${flight.id}">
-                                            Show Positions
-                                        </button>
-                                    </div>
-                                    <table class="positions-table" id="positions-${flight.id}">
-                                        <thead>
-                                            <tr>
-                                                <th>Time</th>
-                                                <th>Latitude</th>
-                                                <th>Longitude</th>
-                                                <th>Altitude (ft)</th>
-                                                <th>Speed (kts)</th>
-                                                <th>Track (°)</th>
-                                                <th>Heading (°)</th>
-                                                <th>Vertical Rate</th>
-                                                <th>Squawk</th>
-                                                <th>Distance (km)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="positions-body-${flight.id}">
-                                            <tr>
-                                                <td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">
-                                                    Loading positions...
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
                                 </div>
                             </div>
                         `).join('')}
@@ -911,30 +1232,423 @@
             `).join('');
             
             // Initialize maps for all flights (staggered to avoid overwhelming server)
-            let mapIndex = 0;
-            days.forEach(day => {
-                day.flights.forEach(flight => {
-                    setTimeout(() => loadFlightMap(flight.id), 200 * (mapIndex + 1)); // Stagger by 200ms each
-                    mapIndex++;
-                });
-            });
+            // No pre-loading - everything loads on demand when user expands a card
         }
         
-        // Load and display flight path on mini map
+        // Toggle flight card expand/collapse
+        function toggleFlightCard(flightId) {
+            const card = document.getElementById(`flight-card-${flightId}`);
+            const body = document.getElementById(`flight-body-${flightId}`);
+            
+            if (!card || !body) {
+                return;
+            }
+            
+            const isCollapsed = card.classList.contains('collapsed');
+            
+            if (isCollapsed) {
+                // Expanding - expand immediately, then load data in background
+                card.classList.remove('collapsed');
+                card.classList.add('expanded');
+                
+                // Load data if not already loaded (don't await - let it load in background)
+                if (!card.dataset.loaded) {
+                    card.dataset.loaded = 'true';
+                    // Load data asynchronously without blocking
+                    loadFlightDetails(flightId).catch(error => {
+                        console.error(`Error loading flight details for ${flightId}:`, error);
+                        body.innerHTML = `<div style="padding: 20px; color: var(--text-error);">Error loading flight details: ${error.message}</div>`;
+                    });
+                        }
+                    } else {
+                // Collapsing
+                card.classList.add('collapsed');
+                card.classList.remove('expanded');
+            }
+        }
+        
+        // Load full flight details when card is expanded
+        async function loadFlightDetails(flightId) {
+            const body = document.getElementById(`flight-body-${flightId}`);
+            if (!body) {
+                return;
+            }
+            
+            // Find flight data
+            const flight = flights.find(f => f.id === flightId);
+            if (!flight) {
+                body.innerHTML = '<div style="padding: 20px; color: var(--text-muted);">Flight data not found</div>';
+                return;
+            }
+            
+            try {
+                // Load map and photo in parallel
+                await Promise.all([
+                    loadFlightMap(flightId),
+                    loadAircraftPhoto(flight.aircraft_icao, flightId)
+                ]);
+                
+                // Render the flight body content
+                body.innerHTML = `
+                    <div class="flight-content-row">
+                        <div class="flight-details">
+                            ${flight.origin && flight.destination ? `
+                                <div class="flight-route-display">
+                                    <div class="route-section">
+                                        <div class="route-section-label">From</div>
+                                        <div class="route-airport-code">${flight.origin}</div>
+                                        ${flight.origin_country ? `<div class="route-country-info">${getCountryFlag(flight.origin_country)} ${flight.origin_country}</div>` : ''}
+                                    </div>
+                                    
+                                    <div class="route-plane-container">
+                                        <div class="route-plane-line"></div>
+                                        <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="var(--route-color)"/>
+                                        </svg>
+                                    </div>
+                                    
+                                    <div class="route-section" style="text-align: right;">
+                                        <div class="route-section-label">To</div>
+                                        <div class="route-airport-code">${flight.destination}</div>
+                                        ${flight.destination_country ? `<div class="route-country-info" style="justify-content: flex-end;">${getCountryFlag(flight.destination_country)} ${flight.destination_country}</div>` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${flight.position_count !== null && flight.position_count !== undefined ? `
+                                <div class="flight-detail-item">
+                                    <label>Position Count</label>
+                                    <value>${flight.position_count.toLocaleString()}</value>
+                                </div>
+                            ` : ''}
+                            <div class="flight-detail-item">
+                                <label>Start Time</label>
+                                <value>${formatDateTime(flight.start_time)}</value>
+                            </div>
+                            ${flight.end_time ? `
+                                <div class="flight-detail-item">
+                                    <label>End Time</label>
+                                    <value>${formatDateTime(flight.end_time)}</value>
+                                </div>
+                            ` : ''}
+                            ${flight.aircraft && flight.aircraft.registration ? `
+                                <div class="flight-detail-item">
+                                    <label>Aircraft</label>
+                                    <value>${flight.aircraft.registration}${flight.aircraft.model ? ' - ' + flight.aircraft.model : ''}</value>
+                                </div>
+                            ` : ''}
+                            <div class="aircraft-photo-container" id="aircraft-photo-${flightId}">
+                                <div class="aircraft-photo-loading">Loading aircraft photo...</div>
+                            </div>
+                        </div>
+                        <div class="flight-map-container">
+                            <div class="map-loading" id="map-loading-${flightId}">Loading flight path...</div>
+                            <div class="flight-map" id="flight-map-${flightId}" style="display: none; width: 100%; height: 100%;"></div>
+                        </div>
+                    </div>
+                    <div class="positions-header">
+                        <h4>Position Data</h4>
+                        <button class="toggle-positions-btn" onclick="togglePositions(${flightId})" id="btn-${flightId}">
+                            Show Positions
+                        </button>
+                    </div>
+                    <table class="positions-table" id="positions-${flightId}">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Latitude</th>
+                                <th>Longitude</th>
+                                <th>Altitude (ft)</th>
+                                <th>Speed (kts)</th>
+                                <th>Track (°)</th>
+                                <th>Heading (°)</th>
+                                <th>Vertical Rate</th>
+                                <th>Squawk</th>
+                                <th>Distance (km)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="positions-body-${flightId}">
+                            <tr>
+                                <td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                                    Loading positions...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                `;
+                
+                // Now load the map and photo
+                await loadFlightMap(flightId);
+                await loadAircraftPhoto(flight.aircraft_icao, flightId);
+                
+            } catch (error) {
+                console.error(`Error loading flight details for ${flightId}:`, error);
+                body.innerHTML = `<div style="padding: 20px; color: var(--text-error);">Error loading flight details: ${error.message}</div>`;
+            }
+        }
+        
+        // Load aircraft photo directly from Wikimedia Commons (bypasses server to avoid blocking)
+        async function loadAircraftPhoto(icao, flightId) {
+            const photoContainer = document.getElementById(`aircraft-photo-${flightId}`);
+            if (!photoContainer) {
+                return;
+            }
+            
+            // Get registration from flight data
+            const flight = flights.find(f => f.id === flightId);
+            if (!flight || !flight.aircraft_icao) {
+                photoContainer.innerHTML = '<div class="aircraft-photo-placeholder">No aircraft data</div>';
+                return;
+            }
+            
+            // Get registration from aircraft data
+            const registration = flight.registration || flight.aircraft?.registration;
+            if (!registration) {
+                photoContainer.innerHTML = '<div class="aircraft-photo-placeholder">No registration</div>';
+                    return;
+                }
+                
+            try {
+                // Try Planespotters.net first (aircraft-specific API)
+                // If that fails, fall back to Wikimedia Commons
+                let photoUrl = null;
+                let photoInfo = null;
+                
+                try {
+                    const planespottersUrl = `https://api.planespotters.net/pub/photos/reg/${registration}`;
+                    const psResponse = await fetch(planespottersUrl, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'FlightTracker/1.0'
+                        },
+                        mode: 'cors'
+                    });
+                    
+                    if (psResponse.ok) {
+                        const psData = await psResponse.json();
+                        if (psData && psData.photos && psData.photos.length > 0) {
+                            // Use first photo from Planespotters.net
+                            const photo = psData.photos[0];
+                            // Prefer thumbnail_large, fallback to thumbnail
+                            photoUrl = photo.thumbnail_large?.src || photo.thumbnail?.src;
+                            if (photoUrl) {
+                                photoInfo = {
+                                    photographer: photo.photographer,
+                                    link: photo.link
+                                };
+                                console.log(`Using Planespotters.net photo for ${registration}`);
+                            }
+                        }
+                    }
+                } catch (psError) {
+                    console.log(`Planespotters.net not available for ${registration}, using Wikimedia Commons:`, psError);
+                }
+                
+                // Fallback to Wikimedia Commons if Planespotters.net didn't work
+                if (!photoUrl) {
+                    // Fetch photos directly from Wikimedia Commons API
+                    // Use more specific search terms to filter for aircraft photos
+                    const searchUrl = 'https://commons.wikimedia.org/w/api.php';
+                    
+                    // Search with aircraft-related terms and registration to improve relevance
+                    const searchTerms = `"${registration}" (aircraft OR airplane OR plane OR aviation OR airliner)`;
+                    const searchParams = new URLSearchParams({
+                        action: 'query',
+                        format: 'json',
+                        list: 'search',
+                        srsearch: searchTerms,
+                        srnamespace: '6', // File namespace
+                        srlimit: '15', // Get more results to filter through
+                        origin: '*' // CORS
+                    });
+                
+                const searchResponse = await fetch(`${searchUrl}?${searchParams}`, {
+                    headers: {
+                        'User-Agent': 'FlightTracker/1.0'
+                    }
+                });
+                
+                if (!searchResponse.ok) {
+                    throw new Error(`Search failed: ${searchResponse.status}`);
+                }
+                
+                const searchData = await searchResponse.json();
+                const searchResults = searchData.query?.search || [];
+                
+                if (searchResults.length === 0) {
+                    photoContainer.innerHTML = '<div class="aircraft-photo-placeholder">No photo available</div>';
+                    return;
+                }
+                
+                // Filter results to ensure they're actually aircraft photos
+                // Check if title contains aircraft-related keywords and the registration
+                const aircraftKeywords = [
+                    'aircraft', 'airplane', 'plane', 'aviation', 'airliner', 
+                    'airbus', 'boeing', 'cessna', 'embraer', 'bombardier',
+                    'a320', 'a321', 'a330', 'a340', 'a350', 'a380',
+                    '737', '747', '757', '767', '777', '787',
+                    'at', 'airport', 'flying', 'flight', 'lufthansa', 'airline'
+                ];
+                const validResults = searchResults.filter(result => {
+                    const title = result.title.toLowerCase();
+                    const snippet = (result.snippet || '').toLowerCase();
+                    const regLower = registration.toLowerCase();
+                    
+                    // Must contain the registration (exact match preferred)
+                    const hasRegistration = title.includes(regLower) || snippet.includes(regLower);
+                    if (!hasRegistration) {
+                        return false;
+                    }
+                    
+                    // Must contain at least one aircraft-related keyword
+                    const hasAircraftKeyword = aircraftKeywords.some(keyword => 
+                        title.includes(keyword) || snippet.includes(keyword)
+                    );
+                    
+                    // Exclude non-aircraft terms (more comprehensive list)
+                    const excludeTerms = [
+                        'document', 'manual', 'diagram', 'drawing', 'map', 'chart', 
+                        'logo', 'emblem', 'badge', 'sign', 'poster', 'brochure',
+                        'screenshot', 'software', 'app', 'application'
+                    ];
+                    const hasExcludeTerm = excludeTerms.some(term => 
+                        title.includes(term) || snippet.includes(term)
+                    );
+                    
+                    // Prefer results with photo-related terms
+                    const photoTerms = ['photo', 'photograph', 'image', 'picture', 'jpg', 'jpeg', 'png'];
+                    const hasPhotoTerm = photoTerms.some(term => title.includes(term));
+                    
+                    // Score: must have registration and aircraft keyword, no exclude terms, bonus for photo terms
+                    return hasRegistration && hasAircraftKeyword && !hasExcludeTerm;
+                }).sort((a, b) => {
+                    // Sort by relevance: prefer results with photo terms and exact registration match
+                    const aTitle = a.title.toLowerCase();
+                    const bTitle = b.title.toLowerCase();
+                    const regLower = registration.toLowerCase();
+                    
+                    const aHasPhoto = ['photo', 'photograph', 'image'].some(term => aTitle.includes(term));
+                    const bHasPhoto = ['photo', 'photograph', 'image'].some(term => bTitle.includes(term));
+                    const aExactReg = aTitle.includes(` ${regLower} `) || aTitle.includes(`(${regLower})`);
+                    const bExactReg = bTitle.includes(` ${regLower} `) || bTitle.includes(`(${regLower})`);
+                    
+                    if (aHasPhoto && !bHasPhoto) return -1;
+                    if (!aHasPhoto && bHasPhoto) return 1;
+                    if (aExactReg && !bExactReg) return -1;
+                    if (!aExactReg && bExactReg) return 1;
+                    return 0;
+                });
+                
+                    if (validResults.length === 0) {
+                        // Fallback: use first result if no valid matches found
+                        console.warn(`No validated aircraft photos found for ${registration}, using first result`);
+                        var fileTitle = searchResults[0].title;
+                    } else {
+                        // Use the first validated result
+                        var fileTitle = validResults[0].title;
+                    }
+                    // Get image info and categories to validate it's an aircraft photo
+                    const imageParams = new URLSearchParams({
+                        action: 'query',
+                        format: 'json',
+                        titles: fileTitle,
+                        prop: 'imageinfo|categories',
+                        iiprop: 'url|thumburl',
+                        iiurlwidth: '400',
+                        cllimit: '10', // Get categories
+                        origin: '*'
+                    });
+                    
+                    const imageResponse = await fetch(`${searchUrl}?${imageParams}`, {
+                        headers: {
+                            'User-Agent': 'FlightTracker/1.0'
+                        }
+                    });
+                    
+                    if (!imageResponse.ok) {
+                        throw new Error(`Image fetch failed: ${imageResponse.status}`);
+                    }
+                    
+                    const imageData = await imageResponse.json();
+                    const pages = imageData.query?.pages || {};
+                    const pageId = Object.keys(pages)[0];
+                    const pageInfo = pages[pageId];
+                    const imageinfo = pageInfo?.imageinfo?.[0];
+                    
+                    if (!imageinfo) {
+                        photoContainer.innerHTML = '<div class="aircraft-photo-placeholder">No photo available</div>';
+                    return;
+                }
+                
+                    // Validate categories - check if image is in aircraft-related categories
+                    const categories = pageInfo.categories || [];
+                    const categoryTitles = categories.map(cat => cat.title.toLowerCase());
+                    const aircraftCategoryKeywords = ['aircraft', 'airplane', 'aviation', 'airliner', 'airbus', 'boeing', 'lufthansa', 'airline', 'aircraft by registration'];
+                    const isAircraftCategory = categoryTitles.some(catTitle => 
+                        aircraftCategoryKeywords.some(keyword => catTitle.includes(keyword))
+                    );
+                    
+                    // Log warning if no aircraft categories found (but still show the image)
+                    if (!isAircraftCategory) {
+                        console.warn(`Image ${fileTitle} may not be an aircraft photo (no aircraft categories found)`);
+                    }
+                    
+                    photoUrl = imageinfo.thumburl || imageinfo.url;
+                }
+                
+                // Display the photo (from either Planespotters.net or Wikimedia Commons)
+                if (!photoUrl) {
+                    photoContainer.innerHTML = '<div class="aircraft-photo-placeholder">No photo available</div>';
+                    return;
+                }
+                
+                // Build photo info text
+                const infoText = flight.aircraft?.model || flight.aircraft?.type || '';
+                let photographerText = '';
+                if (photoInfo && photoInfo.photographer) {
+                    photographerText = photoInfo.photographer;
+                }
+                
+                photoContainer.innerHTML = `
+                    <img src="${photoUrl}" alt="${infoText || 'Aircraft'}" class="aircraft-photo" 
+                         onerror="this.parentElement.innerHTML='<div class=\\'aircraft-photo-placeholder\\'>Photo failed to load</div>'">
+                    ${infoText || photographerText ? `
+                        <div class="aircraft-photo-info">
+                            ${infoText ? `<span>${infoText}</span>` : ''}
+                            ${photographerText ? `<span>Photo: ${photographerText}</span>` : ''}
+                        </div>
+                    ` : ''}
+                `;
+                
+            } catch (error) {
+                console.error(`Error loading aircraft photo for ${registration}:`, error);
+                photoContainer.innerHTML = '<div class="aircraft-photo-placeholder">Error loading photo</div>';
+            }
+        }
+        
+        // Load and display flight path on mini map (lazy loaded)
         async function loadFlightMap(flightId) {
             const mapContainer = document.getElementById(`flight-map-${flightId}`);
             const loadingDiv = document.getElementById(`map-loading-${flightId}`);
             
             if (!mapContainer || !loadingDiv) {
-                console.log(`Map containers not found for flight ${flightId}`);
-                    return;
-                }
+                return;
+            }
+            
+            // Check if map container is visible before loading
+            const rect = mapContainer.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight + 500; // Load if within 500px of viewport
+            
+            if (!isVisible) {
+                // Mark for lazy loading
+                loadingDiv.textContent = 'Scroll to load map';
+                return;
+            }
                 
             try {
                 console.log(`Loading map for flight ${flightId}...`);
-                // Fetch positions with timeout
+                // Fetch positions with longer timeout
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
                 
                 const response = await fetch(`/api/flights/${flightId}/positions`, {
                     signal: controller.signal
@@ -942,46 +1656,28 @@
                 clearTimeout(timeoutId);
                 
                 if (!response.ok) {
-                    console.error(`Failed to load positions for flight ${flightId}: HTTP ${response.status}`);
                     loadingDiv.textContent = `Error: HTTP ${response.status}`;
                     return;
                 }
                 
                 const data = await response.json();
-                console.log(`   ✓ Received ${data.count || 0} positions for flight ${flightId}`);
                 const positions = data.positions || [];
                 
                 if (positions.length === 0) {
-                    console.log(`   ⚠️  No positions in response for flight ${flightId}`);
                     loadingDiv.textContent = 'No position data available';
                     return;
                 }
                 
-                // Debug: Check first position structure
-                if (positions.length > 0) {
-                    console.log(`   📍 First position sample:`, JSON.stringify(positions[0]));
-                }
-                
-                // Filter positions with valid coordinates
-                // Check both null and undefined, and ensure they're numbers
+                // Filter valid positions
                 const validPositions = positions.filter(p => {
                     const lat = p.lat;
                     const lon = p.lon;
-                    const isValid = lat != null && lon != null && 
-                                   !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon)) &&
-                                   parseFloat(lat) !== 0 && parseFloat(lon) !== 0; // Also filter out 0,0 (invalid)
-                    if (!isValid && positions.indexOf(p) < 3) {
-                        console.log(`   ⚠️  Invalid position: lat=${lat}, lon=${lon}`);
-                    }
-                    return isValid;
+                    return lat != null && lon != null && 
+                           !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lon)) &&
+                           parseFloat(lat) !== 0 && parseFloat(lon) !== 0;
                 });
-                console.log(`   ✓ ${validPositions.length} valid positions (of ${positions.length} total) for flight ${flightId}`);
                 
                 if (validPositions.length === 0) {
-                    console.log(`   ⚠️  No valid coordinates for flight ${flightId}`);
-                    if (positions.length > 0) {
-                        console.log(`   📍 Sample positions:`, positions.slice(0, 3));
-                    }
                     loadingDiv.textContent = 'No valid position data';
                     return;
                 }
@@ -989,24 +1685,46 @@
                 // Create map path
                 const path = validPositions.map(p => [p.lat, p.lon]);
                 
-                // Initialize map
+                // Ensure container is visible and has dimensions before initializing map
+                mapContainer.style.display = 'block';
+                mapContainer.style.height = '300px'; // Ensure height is set
+                mapContainer.style.width = '100%'; // Ensure width is set
+                
+                // Wait a moment for container to be fully rendered
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Initialize map with minimal controls
                 const map = L.map(`flight-map-${flightId}`, {
-                    zoomControl: true,
-                    attributionControl: true
+                    zoomControl: false,
+                    attributionControl: false,
+                    scrollWheelZoom: false,
+                    dragging: false,
+                    doubleClickZoom: false,
+                    boxZoom: false,
+                    keyboard: false,
+                    tap: false,
+                    touchZoom: false
                 });
                 
-                // Add tile layer
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors',
-                    maxZoom: 18
-                }).addTo(map);
+                // Add tile layer with retry logic
+                const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap',
+                    maxZoom: 18,
+                    maxRetries: 3,
+                    retryDelay: 1000
+                });
+                
+                tileLayer.on('tileerror', function(error, tile) {
+                    console.warn(`Tile error for ${flightId}:`, error);
+                });
+                
+                tileLayer.addTo(map);
                 
                 // Draw flight path
                 const polyline = L.polyline(path, {
                     color: '#3e91be',
                     weight: 3,
-                    opacity: 0.8,
-                    smoothFactor: 1
+                    opacity: 0.8
                 }).addTo(map);
                 
                 // Fit map to path
@@ -1022,10 +1740,10 @@
                     L.marker(path[0], {
                         icon: L.divIcon({
                             className: 'flight-start-marker',
-                            html: '<div style="background: #28a745; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>',
+                            html: '<div style="background: #28a745; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
                             iconSize: [12, 12]
                         })
-                    }).addTo(map).bindPopup('Start');
+                    }).addTo(map);
                 }
                 
                 // Add end marker
@@ -1033,34 +1751,41 @@
                     L.marker(path[path.length - 1], {
                         icon: L.divIcon({
                             className: 'flight-end-marker',
-                            html: '<div style="background: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);"></div>',
+                            html: '<div style="background: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
                             iconSize: [12, 12]
                         })
-                    }).addTo(map).bindPopup('End');
+                    }).addTo(map);
                 }
                 
-                // Store map reference (flightMaps is declared at top level)
-                if (typeof flightMaps !== 'undefined') {
-                    flightMaps[flightId] = map;
-                }
-                
-                // Show map, hide loading
+                // Hide loading
                 loadingDiv.style.display = 'none';
-                mapContainer.style.display = 'block';
                 
-                // Trigger resize to ensure map renders correctly
+                // Force Leaflet to recalculate size - multiple attempts to ensure it works
                 setTimeout(() => {
                     map.invalidateSize();
-                }, 100);
+                    // Re-fit bounds after size is correct
+                    if (path.length > 0) {
+                        map.fitBounds(polyline.getBounds(), {
+                            padding: [20, 20],
+                            maxZoom: 10
+                        });
+                    }
+                }, 150);
+                
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 400);
+                
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 700);
                 
             } catch (error) {
                 console.error(`Error loading map for flight ${flightId}:`, error);
                 if (error.name === 'AbortError') {
                     loadingDiv.textContent = 'Request timed out';
-                } else if (error.message && error.message.includes('fetch')) {
-                    loadingDiv.textContent = 'Network error - check server';
                 } else {
-                    loadingDiv.textContent = `Error: ${error.message || 'Unknown error'}`;
+                    loadingDiv.textContent = `Error: ${error.message || 'Unknown'}`;
                 }
             }
         }
@@ -1129,6 +1854,24 @@
             if (!isoString) return '—';
             const date = new Date(isoString);
             return date.toLocaleString();
+        }
+        
+        // Get country flag emoji
+        function getCountryFlag(country) {
+            const flags = {
+                'Germany': '🇩🇪', 'United Kingdom': '🇬🇧', 'France': '🇫🇷',
+                'Netherlands': '🇳🇱', 'Italy': '🇮🇹', 'Spain': '🇪🇸',
+                'Austria': '🇦🇹', 'Switzerland': '🇨🇭', 'Denmark': '🇩🇰',
+                'Sweden': '🇸🇪', 'Norway': '🇳🇴', 'Finland': '🇫🇮',
+                'Poland': '🇵🇱', 'Czech Republic': '🇨🇿', 'Hungary': '🇭🇺',
+                'Greece': '🇬🇷', 'Portugal': '🇵🇹', 'Ireland': '🇮🇪',
+                'Belgium': '🇧🇪', 'Turkey': '🇹🇷', 'Croatia': '🇭🇷',
+                'United Arab Emirates': '🇦🇪', 'Qatar': '🇶🇦', 'Saudi Arabia': '🇸🇦',
+                'Israel': '🇮🇱', 'Singapore': '🇸🇬', 'Hong Kong': '🇭🇰',
+                'Japan': '🇯🇵', 'South Korea': '🇰🇷', 'Thailand': '🇹🇭',
+                'Malaysia': '🇲🇾', 'United States': '🇺🇸', 'China': '🇨🇳'
+            };
+            return flags[country] || '🌍';
         }
 
         // Initialize

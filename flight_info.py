@@ -283,6 +283,127 @@ def get_current_position_adsblol(icao):
         print(f"[{timestamp}] API EXCEPTION: {icao} - {str(e)}")
     return None
 
+def get_aircraft_photos_jetapi(registration):
+    """
+    Get aircraft photos from Wikimedia Commons (free, no API key required)
+    
+    Args:
+        registration: Aircraft registration/tail number (e.g., 'D-AIUL', 'N12345')
+    
+    Returns:
+        dict with aircraft photos and details or None
+    """
+    if not registration:
+        return None
+    
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    try:
+        print(f"[{timestamp}] API CALL: get_aircraft_photos - Registration: {registration}")
+        
+        # Search Wikimedia Commons for images of this aircraft
+        search_url = "https://commons.wikimedia.org/w/api.php"
+        params = {
+            'action': 'query',
+            'format': 'json',
+            'list': 'search',
+            'srsearch': registration,
+            'srnamespace': 6,  # File namespace
+            'srlimit': 5,
+            'srprop': 'size|timestamp'
+        }
+        
+        headers = {
+            'User-Agent': 'FlightTracker/1.0 (https://github.com/your-repo)'
+        }
+        response = requests.get(search_url, params=params, headers=headers, timeout=3)
+        if response.status_code != 200:
+            print(f"[{timestamp}] API ERROR: Wikimedia API returned status {response.status_code}")
+            return None
+        
+        data = response.json()
+        search_results = data.get('query', {}).get('search', [])
+        
+        if not search_results:
+            print(f"[{timestamp}] API INFO: No photos found for {registration} in Wikimedia Commons")
+            return None
+        
+        # Get image URLs for the found files
+        file_titles = [result['title'] for result in search_results]
+        image_params = {
+            'action': 'query',
+            'format': 'json',
+            'titles': '|'.join(file_titles),
+            'prop': 'imageinfo',
+            'iiprop': 'url|thumburl|extmetadata',
+            'iiurlwidth': 400  # Thumbnail width
+        }
+        
+        image_response = requests.get(search_url, params=image_params, headers=headers, timeout=3)
+        if image_response.status_code != 200:
+            print(f"[{timestamp}] API ERROR: Failed to get image URLs")
+            return None
+        
+        image_data = image_response.json()
+        pages = image_data.get('query', {}).get('pages', {})
+        
+        photos = []
+        for page_id, page_info in pages.items():
+            if page_id == '-1':  # Missing page
+                continue
+            
+            imageinfo = page_info.get('imageinfo', [])
+            if imageinfo:
+                img_info = imageinfo[0]
+                photo_url = img_info.get('url') or img_info.get('thumburl')
+                if photo_url:
+                    # Extract metadata if available
+                    extmetadata = img_info.get('extmetadata', {})
+                    photographer = None
+                    if 'Artist' in extmetadata:
+                        photographer_raw = extmetadata['Artist'].get('value', '')
+                        # Strip HTML tags from photographer name
+                        import re
+                        photographer = re.sub(r'<[^>]+>', '', photographer_raw).strip()
+                    elif 'Photographer' in extmetadata:
+                        photographer_raw = extmetadata['Photographer'].get('value', '')
+                        import re
+                        photographer = re.sub(r'<[^>]+>', '', photographer_raw).strip()
+                    
+                    date_value = None
+                    if extmetadata:
+                        if 'DateTimeOriginal' in extmetadata:
+                            date_value = extmetadata['DateTimeOriginal'].get('value', '')
+                        elif 'DateTime' in extmetadata:
+                            date_value = extmetadata['DateTime'].get('value', '')
+                    
+                    photos.append({
+                        'url': photo_url,
+                        'thumbnail': img_info.get('thumburl') or photo_url,
+                        'photographer': photographer,
+                        'date': date_value
+                    })
+        
+        if photos:
+            result = {
+                'photos': photos[:3],  # Limit to 3 photos
+                'registration': registration
+            }
+            print(f"[{timestamp}] API SUCCESS: Found {len(photos)} photos for {registration} in Wikimedia Commons")
+            return result
+        else:
+            print(f"[{timestamp}] API INFO: No valid photo URLs found for {registration}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print(f"[{timestamp}] API ERROR: Request timeout for {registration}")
+        return None
+    except Exception as e:
+        print(f"[{timestamp}] API ERROR: Exception for {registration}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def get_aircraft_info_adsblol(icao):
     """
     Get aircraft information (model, type, registration) from adsb.lol by ICAO

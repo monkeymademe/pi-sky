@@ -1098,19 +1098,32 @@ class FlightDatabase:
         Returns:
             Aircraft dictionary or None
         """
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
+        # Don't use lock for read operations - SQLite handles concurrency
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=3.0)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
             cursor.execute('SELECT * FROM aircraft WHERE icao = ?', (icao,))
             
             row = cursor.fetchone()
-            conn.close()
             
             if row:
                 return dict(row)
             return None
+        except sqlite3.OperationalError as e:
+            print(f"      ✗ Database error in get_aircraft(): {e}")
+            raise
+        except Exception as e:
+            print(f"      ✗ Error in get_aircraft(): {e}")
+            raise
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
     
     def list_aircraft(self, limit=None):
         """
@@ -1122,8 +1135,10 @@ class FlightDatabase:
         Returns:
             List of aircraft dictionaries
         """
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
+        # Don't use lock for read operations - SQLite handles concurrency
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=3.0)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
@@ -1135,8 +1150,18 @@ class FlightDatabase:
                 cursor.execute(query)
             
             rows = cursor.fetchall()
-            conn.close()
-            
             return [dict(row) for row in rows]
+        except sqlite3.OperationalError as e:
+            print(f"      ✗ Database error in list_aircraft(): {e}")
+            raise
+        except Exception as e:
+            print(f"      ✗ Error in list_aircraft(): {e}")
+            raise
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
 
 

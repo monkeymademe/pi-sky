@@ -658,12 +658,11 @@
         <div class="header">
             <div>
                 <h1>✈️ Flight Map</h1>
-                <div class="timestamp" id="lastUpdate">Waiting for data...</div>
             </div>
             <div class="nav-links">
                 <a href="index.html">Flight List</a>
                 <a href="index-maps.html" class="active">Flight Map</a>
-                <a href="index-replay.html">Replay</a>
+                <a href="index-replay.html">History</a>
             </div>
             <div class="status">
                 <div>
@@ -1780,13 +1779,6 @@
             // Update stats
             document.getElementById('activeFlights').textContent = stats.active || 0;
             document.getElementById('totalFlights').textContent = stats.total || 0;
-            
-            // Update timestamp
-            const timestamp = document.getElementById('lastUpdate');
-            if (stats.timestamp) {
-                const date = new Date(stats.timestamp);
-                timestamp.textContent = `Last update: ${date.toLocaleTimeString()}`;
-            }
             
             // Update map
             updateMap(flights, stats);

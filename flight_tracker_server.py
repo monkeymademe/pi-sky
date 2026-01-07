@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore', message='.*urllib3.*')
 import requests
 import subprocess
 
-from flight_info import get_flight_route, get_aircraft_info_adsblol, get_airport_coordinates, get_city_name_from_coordinates
+from flight_info import get_flight_route, get_aircraft_info_adsblol, get_aircraft_photos_jetapi, get_airport_coordinates, get_city_name_from_coordinates
 from airline_logos import get_airline_info
 from flight_db import FlightDatabase
 
@@ -1821,8 +1821,178 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     }).encode())
                     return
             
+            # Route: /api/flights/{id}/map (static map image)
+            if len(path_parts) >= 4 and path_parts[2].isdigit() and path_parts[3] == 'map':
+                flight_id = int(path_parts[2])
+                print(f"   🗺️  Handling map image request for flight {flight_id}")
+                
+                # Get flight positions
+                positions = flight_db.get_flight_positions(flight_id, limit=None)
+                if not positions or len(positions) == 0:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'No positions found',
+                        'message': f'Flight #{flight_id} has no position data'
+                    }).encode())
+                    return
+                
+                # Filter valid positions
+                valid_positions = [p for p in positions if p.get('lat') is not None and p.get('lon') is not None]
+                if len(valid_positions) == 0:
+                    self.send_response(404)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'No valid positions',
+                        'message': f'Flight #{flight_id} has no valid coordinates'
+                    }).encode())
+                    return
+                
+                # Calculate bounds for the flight path
+                lats = [p['lat'] for p in valid_positions]
+                lons = [p['lon'] for p in valid_positions]
+                min_lat, max_lat = min(lats), max(lats)
+                min_lon, max_lon = min(lons), max(lons)
+                
+                # Center and zoom calculation
+                center_lat = (min_lat + max_lat) / 2
+                center_lon = (min_lon + max_lon) / 2
+                
+                # Calculate appropriate zoom level based on bounds
+                lat_range = max_lat - min_lat
+                lon_range = max_lon - min_lon
+                max_range = max(lat_range, lon_range)
+                
+                # Determine zoom level (rough calculation)
+                if max_range > 10:
+                    zoom = 6
+                elif max_range > 5:
+                    zoom = 7
+                elif max_range > 2:
+                    zoom = 8
+                elif max_range > 1:
+                    zoom = 9
+                elif max_range > 0.5:
+                    zoom = 10
+                elif max_range > 0.2:
+                    zoom = 11
+                else:
+                    zoom = 12
+                
+                # Import map generation function
+                try:
+                    from map_to_png import generate_osm_map_png, deg2num, num2deg
+                    from PIL import Image, ImageDraw
+                    import tempfile
+                    import math
+                    from io import BytesIO
+                    
+                    # Generate map centered on flight path
+                    # Use center of bounds as the center point
+                    flight_data = {
+                        'lat': center_lat,
+                        'lon': center_lon
+                    }
+                    
+                    # Generate map to temporary file
+                    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                        tmp_path = tmp_file.name
+                    
+                    # Generate base map (600x300 for mini-map)
+                    width = 600
+                    height = 300
+                    success = generate_osm_map_png(flight_data, tmp_path, width=width, height=height, zoom=zoom, overlay_card=False)
+                    
+                    if not success:
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+                        self.send_response(500)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Map generation failed',
+                            'message': 'Could not generate map image'
+                        }).encode())
+                        return
+                    
+                    # Read the generated image and draw flight path
+                    img = Image.open(tmp_path)
+                    draw = ImageDraw.Draw(img)
+                    
+                    # Calculate bounds with padding for better visualization
+                    lat_padding = (max_lat - min_lat) * 0.1
+                    lon_padding = (max_lon - min_lon) * 0.1
+                    bounds_min_lat = min_lat - lat_padding
+                    bounds_max_lat = max_lat + lat_padding
+                    bounds_min_lon = min_lon - lon_padding
+                    bounds_max_lon = max_lon + lon_padding
+                    
+                    # Convert positions to pixel coordinates
+                    def latlon_to_pixel(lat, lon):
+                        # Simple linear mapping (good enough for small areas)
+                        x = int((lon - bounds_min_lon) / (bounds_max_lon - bounds_min_lon) * width)
+                        y = int((bounds_max_lat - lat) / (bounds_max_lat - bounds_min_lat) * height)
+                        # Clamp to image bounds
+                        x = max(0, min(width - 1, x))
+                        y = max(0, min(height - 1, y))
+                        return (x, y)
+                    
+                    path_points = [latlon_to_pixel(p['lat'], p['lon']) for p in valid_positions]
+                    
+                    # Draw flight path
+                    if len(path_points) > 1:
+                        draw.line(path_points, fill='#3e91be', width=3)
+                    
+                    # Draw start marker (green circle)
+                    if path_points:
+                        start_x, start_y = path_points[0]
+                        draw.ellipse([start_x-6, start_y-6, start_x+6, start_y+6], fill='#28a745', outline='white', width=2)
+                    
+                    # Draw end marker (red circle)
+                    if len(path_points) > 1:
+                        end_x, end_y = path_points[-1]
+                        draw.ellipse([end_x-6, end_y-6, end_x+6, end_y+6], fill='#dc3545', outline='white', width=2)
+                    
+                    # Save to bytes
+                    output = BytesIO()
+                    img.save(output, format='PNG')
+                    image_data = output.getvalue()
+                    os.unlink(tmp_path)
+                    
+                    # Send image
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/png')
+                    self.send_header('Cache-Control', 'public, max-age=3600')  # Cache for 1 hour
+                    self.end_headers()
+                    self.wfile.write(image_data)
+                    return
+                    
+                except ImportError:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Map generation not available',
+                        'message': 'map_to_png.py dependencies not installed'
+                    }).encode())
+                    return
+                except Exception as e:
+                    print(f"   ✗ Error generating map: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Map generation error',
+                        'message': str(e)
+                    }).encode())
+                    return
+            
             # Route: /api/flights/{id}/positions
-            if len(path_parts) >= 4 and path_parts[2].isdigit() and path_parts[3] == 'positions':
+            elif len(path_parts) >= 4 and path_parts[2].isdigit() and path_parts[3] == 'positions':
                 flight_id = int(path_parts[2])
                 print(f"   📍 Handling positions request for flight {flight_id}")
                 start_time = params.get('start_time', [None])[0]
@@ -2134,6 +2304,18 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         }).encode())
                         return
                     
+                    # Try to fetch photos and additional details (non-blocking, fast timeout)
+                    # Photos are fetched asynchronously in the frontend, so we skip here to avoid blocking
+                    # If you want to include photos server-side, uncomment below but be aware it will slow responses
+                    photos_data = None
+                    # registration = aircraft.get('registration')
+                    # if registration:
+                    #     try:
+                    #         photos_data = get_aircraft_photos_jetapi(registration)
+                    #     except Exception as e:
+                    #         print(f"   ⚠️  Error fetching photos for {registration}: {e}")
+                    #         photos_data = None
+                    
                     response = {
                         'icao': aircraft.get('icao'),
                         'registration': aircraft.get('registration'),
@@ -2143,6 +2325,19 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'first_seen_at': aircraft.get('first_seen_at'),
                         'last_seen_at': aircraft.get('last_seen_at')
                     }
+                    
+                    # Add photos and additional details if available
+                    if photos_data:
+                        response['photos'] = photos_data.get('photos', [])
+                        response['airline'] = photos_data.get('airline')
+                        response['year'] = photos_data.get('year')
+                        response['country'] = photos_data.get('country')
+                        response['description'] = photos_data.get('description')
+                        # Update model/manufacturer if JetAPI has better data
+                        if photos_data.get('model') and not response.get('model'):
+                            response['model'] = photos_data.get('model')
+                        if photos_data.get('manufacturer') and not response.get('manufacturer'):
+                            response['manufacturer'] = photos_data.get('manufacturer')
                 
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
