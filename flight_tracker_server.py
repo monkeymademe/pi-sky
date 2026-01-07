@@ -1935,9 +1935,9 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     try:
                         limit = int(limit)
                     except ValueError:
-                        limit = 10  # Default
+                        limit = None  # Invalid limit, don't apply any limit
                 else:
-                    limit = 10  # Default
+                    limit = None  # No limit specified, return all matching flights
                 
                 print(f"   Query params: limit={limit}, active_only={active_only}")
                 print(f"   Calling flight_db.get_flights()...")

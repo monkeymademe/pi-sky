@@ -97,7 +97,7 @@
             align-items: center;
             flex-wrap: wrap;
         }
-        
+
         .nav-links a {
             text-decoration: none;
             color: var(--text-primary);
@@ -106,22 +106,22 @@
             transition: all 0.3s ease;
             font-weight: 500;
         }
-        
+
         .nav-links a:hover {
             background: var(--nav-hover);
         }
-        
+
         .nav-links a.active {
             background: var(--nav-active-bg);
             color: var(--text-white);
         }
-        
+
         .theme-toggle-container {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-        
+
         .theme-toggle {
             width: 50px;
             height: 26px;
@@ -131,7 +131,7 @@
             cursor: pointer;
             transition: background 0.3s ease;
         }
-        
+
         .theme-toggle-slider {
             width: 22px;
             height: 22px;
@@ -143,7 +143,7 @@
             transition: transform 0.3s ease;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
-        
+
         [data-theme="dark"] .theme-toggle-slider {
             transform: translateX(24px);
             background: var(--text-primary);
@@ -208,6 +208,75 @@
         .flights-container {
             display: grid;
             gap: 20px;
+        }
+        
+        .day-section {
+            background: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            transition: background 0.3s ease;
+        }
+        
+        .day-header {
+            background: var(--card-footer-bg);
+            padding: 15px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s ease;
+            user-select: none;
+        }
+        
+        .day-header:hover {
+            background: var(--selected-bg);
+        }
+        
+        .day-header h2 {
+            margin: 0;
+            color: var(--text-primary);
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .day-header .day-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+        
+        .day-header .day-count {
+            background: var(--accent-color);
+            color: var(--text-white);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+        
+        .day-header .collapse-icon {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+            color: var(--text-secondary);
+        }
+        
+        .day-section.collapsed .collapse-icon {
+            transform: rotate(-90deg);
+        }
+        
+        .day-content {
+            padding: 20px;
+            display: grid;
+            gap: 20px;
+        }
+        
+        .day-section.collapsed .day-content {
+            display: none;
         }
         
         .flight-card {
@@ -394,7 +463,7 @@
             padding: 60px 20px;
             color: var(--text-secondary);
         }
-        
+
         .no-flights-icon {
             font-size: 4em;
             margin-bottom: 20px;
@@ -449,7 +518,7 @@
             <div class="status-info">
                 <div class="status-item">
                     <strong id="flightCount">0</strong> flights
-                </div>
+            </div>
                 <div class="status-item">
                     <strong id="totalPositions">0</strong> total positions
                 </div>
@@ -459,9 +528,9 @@
             </div>
             <button class="refresh-btn" id="refreshBtn" onclick="loadFlights()">
                 🔄 Refresh
-            </button>
-        </div>
-        
+                    </button>
+                </div>
+                
         <div id="flightsContainer" class="flights-container">
             <div class="loading">
                 <div class="loading-spinner"></div>
@@ -510,9 +579,17 @@
             container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>Loading flights...</div></div>';
             
             try {
-                // Use absolute URL to avoid any path issues
-                const apiUrl = '/api/flights?limit=10';
+                // Calculate date range for last 7 days
+                const now = new Date();
+                const sevenDaysAgo = new Date(now);
+                sevenDaysAgo.setDate(now.getDate() - 7);
+                const startTime = sevenDaysAgo.toISOString();
+                
+                // Use absolute URL to avoid any path issues - fetch all flights from last 7 days
+                // Pass a very high limit to get all flights (server defaults to 10 if no limit)
+                const apiUrl = `/api/flights?start_time=${encodeURIComponent(startTime)}&limit=10000`;
                 console.log('📡 Fetching flights from:', apiUrl);
+                console.log('📅 Date range: Last 7 days (from', startTime, 'to now)');
                 console.log('📡 Current page URL:', window.location.href);
                 console.log('📡 Full API URL will be:', window.location.origin + apiUrl);
                 
@@ -520,7 +597,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (increased)
                 
-                const startTime = Date.now();
+                const requestStartTime = Date.now();
                 console.log('⏱️  Request started at:', new Date().toISOString());
                 
                 console.log('📡 Making fetch request to:', apiUrl);
@@ -533,7 +610,7 @@
                 });
                 clearTimeout(timeoutId);
                 
-                const elapsed = Date.now() - startTime;
+                const elapsed = Date.now() - requestStartTime;
                 console.log(`⏱️  Request completed in ${elapsed}ms`);
                 console.log('📥 Response status:', response.status, response.statusText);
                 console.log('📥 Response headers:', [...response.headers.entries()]);
@@ -549,7 +626,7 @@
                     try {
                         errorData = JSON.parse(errorText);
                         throw new Error(`HTTP ${response.status}: ${errorData.error || errorData.message || response.statusText}`);
-                    } catch (e) {
+                        } catch (e) {
                         throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${errorText.substring(0, 200)}`);
                     }
                 }
@@ -603,7 +680,7 @@
                     `;
                     document.getElementById('flightCount').textContent = '0';
                     document.getElementById('totalPositions').textContent = '0';
-                } else {
+                        } else {
                     console.log('📋 Rendering flights list...');
                     try {
                         renderFlights();
@@ -665,14 +742,72 @@
                         <p style="margin-top: 10px; font-size: 0.9em; font-family: monospace; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 4px;">
                             ${error.stack ? error.stack.substring(0, 500) : ''}
                         </p>
-                    </div>
-                `;
+                </div>
+            `;
             } finally {
                 refreshBtn.disabled = false;
             }
         }
         
-        // Render flights list
+        // Group flights by day
+        function groupFlightsByDay(flights) {
+            const days = {};
+            
+            flights.forEach(flight => {
+                // Use start_time to determine the day
+                const startDate = new Date(flight.start_time);
+                const dayKey = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                
+                if (!days[dayKey]) {
+                    days[dayKey] = {
+                        date: startDate,
+                        dateString: dayKey,
+                        flights: []
+                    };
+                }
+                
+                days[dayKey].flights.push(flight);
+            });
+            
+            // Sort days by date (most recent first)
+            return Object.keys(days)
+                .sort((a, b) => b.localeCompare(a))
+                .map(key => days[key]);
+        }
+        
+        // Format date for display
+        function formatDate(date) {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            const dateStr = date.toISOString().split('T')[0];
+            const todayStr = today.toISOString().split('T')[0];
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            
+            if (dateStr === todayStr) {
+                return 'Today';
+            } else if (dateStr === yesterdayStr) {
+                return 'Yesterday';
+            } else {
+                return date.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+            }
+        }
+        
+        // Toggle day section
+        function toggleDay(dayKey) {
+            const section = document.getElementById(`day-${dayKey}`);
+            if (section) {
+                section.classList.toggle('collapsed');
+            }
+        }
+        
+        // Render flights list grouped by day
         function renderFlights() {
             const container = document.getElementById('flightsContainer');
             
@@ -681,88 +816,107 @@
                     <div class="no-flights">
                         <div class="no-flights-icon">✈️</div>
                         <h2>No flights found</h2>
-                    </div>
+                                    </div>
                 `;
                 return;
             }
             
-            container.innerHTML = flights.map(flight => `
-                <div class="flight-card" data-flight-id="${flight.id}">
-                    <div class="flight-header">
-                        <div>
-                            <h3>${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})</h3>
-                            ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
-                        </div>
-                        <div class="flight-info">
-                            ${flight.origin && flight.destination ? `
-                                <div class="flight-info-item">
-                                    <label>Route</label>
-                                    <value>${flight.origin} → ${flight.destination}</value>
-                                </div>
-                            ` : ''}
-                            <div class="flight-info-item">
-                                <label>Status</label>
-                                <value>${flight.status || 'unknown'}</value>
-                            </div>
-                            ${flight.position_count !== null && flight.position_count !== undefined ? `
-                                <div class="flight-info-item">
-                                    <label>Positions</label>
-                                    <value>${flight.position_count.toLocaleString()}</value>
-                                </div>
-                            ` : ''}
-                            <div class="flight-info-item">
-                                <label>Started</label>
-                                <value>${formatDateTime(flight.start_time)}</value>
-                            </div>
-                            ${flight.end_time ? `
-                                <div class="flight-info-item">
-                                    <label>Ended</label>
-                                    <value>${formatDateTime(flight.end_time)}</value>
-                                </div>
-                            ` : ''}
+            // Group flights by day
+            const days = groupFlightsByDay(flights);
+            
+            // Render day sections
+            container.innerHTML = days.map(day => `
+                <div class="day-section" id="day-${day.dateString}">
+                    <div class="day-header" onclick="toggleDay('${day.dateString}')">
+                        <h2>
+                            <span class="collapse-icon">▼</span>
+                            ${formatDate(day.date)}
+                        </h2>
+                        <div class="day-info">
+                            <span class="day-count">${day.flights.length} flight${day.flights.length !== 1 ? 's' : ''}</span>
                         </div>
                     </div>
-                    <div class="flight-body">
-                        <div class="flight-map-container">
-                            <div class="map-loading" id="map-loading-${flight.id}">Loading flight path...</div>
-                            <div class="flight-map" id="flight-map-${flight.id}" style="display: none;"></div>
-                        </div>
-                        <div class="positions-header">
-                            <h4>Position Data</h4>
-                            <button class="toggle-positions-btn" onclick="togglePositions(${flight.id})" id="btn-${flight.id}">
-                                Show Positions
-                            </button>
-                        </div>
-                        <table class="positions-table" id="positions-${flight.id}">
-                            <thead>
-                                <tr>
-                                    <th>Time</th>
-                                    <th>Latitude</th>
-                                    <th>Longitude</th>
-                                    <th>Altitude (ft)</th>
-                                    <th>Speed (kts)</th>
-                                    <th>Track (°)</th>
-                                    <th>Heading (°)</th>
-                                    <th>Vertical Rate</th>
-                                    <th>Squawk</th>
-                                    <th>Distance (km)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="positions-body-${flight.id}">
-                                <tr>
-                                    <td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">
-                                        Loading positions...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="day-content">
+                        ${day.flights.map(flight => `
+                            <div class="flight-card" data-flight-id="${flight.id}">
+                                <div class="flight-header">
+                                    <div>
+                                        <h3>${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})</h3>
+                                        ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
+                                    </div>
+                                    <div class="flight-info">
+                                        ${flight.origin && flight.destination ? `
+                                            <div class="flight-info-item">
+                                                <label>Route</label>
+                                                <value>${flight.origin} → ${flight.destination}</value>
+                                            </div>
+                                        ` : ''}
+                                        ${flight.position_count !== null && flight.position_count !== undefined ? `
+                                            <div class="flight-info-item">
+                                                <label>Positions</label>
+                                                <value>${flight.position_count.toLocaleString()}</value>
+                                            </div>
+                                        ` : ''}
+                                        <div class="flight-info-item">
+                                            <label>Started</label>
+                                            <value>${formatDateTime(flight.start_time)}</value>
+                                        </div>
+                                        ${flight.end_time ? `
+                                            <div class="flight-info-item">
+                                                <label>Ended</label>
+                                                <value>${formatDateTime(flight.end_time)}</value>
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                                <div class="flight-body">
+                                    <div class="flight-map-container">
+                                        <div class="map-loading" id="map-loading-${flight.id}">Loading flight path...</div>
+                                        <div class="flight-map" id="flight-map-${flight.id}" style="display: none;"></div>
+                                    </div>
+                                    <div class="positions-header">
+                                        <h4>Position Data</h4>
+                                        <button class="toggle-positions-btn" onclick="togglePositions(${flight.id})" id="btn-${flight.id}">
+                                            Show Positions
+                                        </button>
+                                    </div>
+                                    <table class="positions-table" id="positions-${flight.id}">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Latitude</th>
+                                                <th>Longitude</th>
+                                                <th>Altitude (ft)</th>
+                                                <th>Speed (kts)</th>
+                                                <th>Track (°)</th>
+                                                <th>Heading (°)</th>
+                                                <th>Vertical Rate</th>
+                                                <th>Squawk</th>
+                                                <th>Distance (km)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="positions-body-${flight.id}">
+                                            <tr>
+                                                <td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                                                    Loading positions...
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
             `).join('');
             
             // Initialize maps for all flights (staggered to avoid overwhelming server)
-            flights.forEach((flight, index) => {
-                setTimeout(() => loadFlightMap(flight.id), 200 * (index + 1)); // Stagger by 200ms each
+            let mapIndex = 0;
+            days.forEach(day => {
+                day.flights.forEach(flight => {
+                    setTimeout(() => loadFlightMap(flight.id), 200 * (mapIndex + 1)); // Stagger by 200ms each
+                    mapIndex++;
+                });
             });
         }
         
@@ -773,9 +927,9 @@
             
             if (!mapContainer || !loadingDiv) {
                 console.log(`Map containers not found for flight ${flightId}`);
-                return;
-            }
-            
+                    return;
+                }
+                
             try {
                 console.log(`Loading map for flight ${flightId}...`);
                 // Fetch positions with timeout
@@ -947,7 +1101,7 @@
                 
                 if (positions.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">No position data available</td></tr>';
-                } else {
+            } else {
                     tbody.innerHTML = positions.map(pos => `
                         <tr>
                             <td>${formatDateTime(pos.ts)}</td>
@@ -976,7 +1130,7 @@
             const date = new Date(isoString);
             return date.toLocaleString();
         }
-        
+
         // Initialize
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();

@@ -391,14 +391,36 @@ class FlightDatabase:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get counts before deletion for logging
+            # Get counts before deletion for logging (all tables)
             cursor.execute('SELECT COUNT(*) FROM flight_snapshots WHERE timestamp < ?', (cutoff_str,))
             snapshots_to_delete = cursor.fetchone()[0]
             
             cursor.execute('SELECT COUNT(*) FROM flight_events WHERE timestamp < ?', (cutoff_str,))
             events_to_delete = cursor.fetchone()[0]
             
-            if snapshots_to_delete == 0 and events_to_delete == 0:
+            # Check new tables
+            cursor.execute('SELECT COUNT(*) FROM positions WHERE ts < ?', (cutoff_str,))
+            positions_to_delete = cursor.fetchone()[0]
+            
+            # Find flights that ended before cutoff (or started before cutoff if still active but old)
+            cursor.execute('''
+                SELECT COUNT(*) FROM flights 
+                WHERE (end_time IS NOT NULL AND end_time < ?) 
+                   OR (end_time IS NULL AND start_time < ?)
+            ''', (cutoff_str, cutoff_str))
+            flights_to_delete = cursor.fetchone()[0]
+            
+            # Find aircraft not seen recently (only count those not referenced by flights)
+            cursor.execute('''
+                SELECT COUNT(*) FROM aircraft 
+                WHERE last_seen_at < ?
+                  AND icao NOT IN (SELECT DISTINCT aircraft_icao FROM flights WHERE aircraft_icao IS NOT NULL)
+            ''', (cutoff_str,))
+            aircraft_to_delete = cursor.fetchone()[0]
+            
+            total_to_delete = snapshots_to_delete + events_to_delete + positions_to_delete + flights_to_delete + aircraft_to_delete
+            
+            if total_to_delete == 0:
                 conn.close()
                 print(f"   No data older than {days_to_keep} days to delete")
                 return 0, 0
@@ -406,24 +428,66 @@ class FlightDatabase:
             # Get database size before cleanup
             db_size_before = Path(self.db_path).stat().st_size if Path(self.db_path).exists() else 0
             
-            # Delete old snapshots
-            cursor.execute('''
-                DELETE FROM flight_snapshots
-                WHERE timestamp < ?
-            ''', (cutoff_str,))
-            snapshots_deleted = cursor.rowcount
+            # Delete old positions first (they reference flights via foreign key)
+            if positions_to_delete > 0:
+                cursor.execute('''
+                    DELETE FROM positions
+                    WHERE ts < ?
+                ''', (cutoff_str,))
+                positions_deleted = cursor.rowcount
+                print(f"   Deleted {positions_deleted} old positions")
+            else:
+                positions_deleted = 0
             
-            # Delete old events
-            cursor.execute('''
-                DELETE FROM flight_events
-                WHERE timestamp < ?
-            ''', (cutoff_str,))
-            events_deleted = cursor.rowcount
+            # Delete old flights (positions already deleted, so safe to delete flights)
+            if flights_to_delete > 0:
+                # Delete flights that ended before cutoff, or started before cutoff if still active
+                cursor.execute('''
+                    DELETE FROM flights 
+                    WHERE (end_time IS NOT NULL AND end_time < ?) 
+                       OR (end_time IS NULL AND start_time < ?)
+                ''', (cutoff_str, cutoff_str))
+                flights_deleted = cursor.rowcount
+                print(f"   Deleted {flights_deleted} old flights")
+            else:
+                flights_deleted = 0
+            
+            # Delete old aircraft (only if not referenced by any remaining flights)
+            if aircraft_to_delete > 0:
+                cursor.execute('''
+                    DELETE FROM aircraft 
+                    WHERE last_seen_at < ?
+                      AND icao NOT IN (SELECT DISTINCT aircraft_icao FROM flights WHERE aircraft_icao IS NOT NULL)
+                ''', (cutoff_str,))
+                aircraft_deleted = cursor.rowcount
+                print(f"   Deleted {aircraft_deleted} old aircraft")
+            else:
+                aircraft_deleted = 0
+            
+            # Delete old snapshots (legacy table)
+            if snapshots_to_delete > 0:
+                cursor.execute('''
+                    DELETE FROM flight_snapshots
+                    WHERE timestamp < ?
+                ''', (cutoff_str,))
+                snapshots_deleted = cursor.rowcount
+            else:
+                snapshots_deleted = 0
+            
+            # Delete old events (legacy table)
+            if events_to_delete > 0:
+                cursor.execute('''
+                    DELETE FROM flight_events
+                    WHERE timestamp < ?
+                ''', (cutoff_str,))
+                events_deleted = cursor.rowcount
+            else:
+                events_deleted = 0
             
             conn.commit()
             
             # Vacuum database to reclaim space (only if we deleted something)
-            if snapshots_deleted > 0 or events_deleted > 0:
+            if total_to_delete > 0:
                 print(f"   Vacuuming database to reclaim disk space...")
                 cursor.execute('VACUUM')
                 conn.commit()
@@ -436,7 +500,12 @@ class FlightDatabase:
             db_size_after = Path(self.db_path).stat().st_size if Path(self.db_path).exists() else 0
             size_reclaimed_mb = round((db_size_before - db_size_after) / (1024 * 1024), 2)
             
-            print(f"   ✅ Cleanup complete: Deleted {snapshots_deleted} snapshots, {events_deleted} events")
+            print(f"   ✅ Cleanup complete:")
+            print(f"      • Deleted {positions_deleted} positions")
+            print(f"      • Deleted {flights_deleted} flights")
+            print(f"      • Deleted {aircraft_deleted} aircraft")
+            print(f"      • Deleted {snapshots_deleted} snapshots (legacy)")
+            print(f"      • Deleted {events_deleted} events (legacy)")
             if size_reclaimed_mb > 0:
                 print(f"   💾 Reclaimed {size_reclaimed_mb} MB of disk space ({db_size_before / (1024*1024):.2f} MB → {db_size_after / (1024*1024):.2f} MB)")
             
