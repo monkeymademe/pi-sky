@@ -128,41 +128,59 @@
         .theme-toggle-container {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
 
         .theme-toggle {
+            position: relative;
             width: 50px;
             height: 26px;
             background: var(--border-color);
             border-radius: 13px;
-            position: relative;
             cursor: pointer;
             transition: background 0.3s ease;
+            border: 2px solid var(--border-color);
+        }
+
+        .theme-toggle.active {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
         }
 
         .theme-toggle-slider {
-            width: 22px;
-            height: 22px;
-            background: white;
-            border-radius: 50%;
             position: absolute;
             top: 2px;
             left: 2px;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
             transition: transform 0.3s ease;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
-        [data-theme="dark"] .theme-toggle-slider {
+        .theme-toggle.active .theme-toggle-slider {
             transform: translateX(24px);
-            background: var(--text-primary);
+        }
+
+        .theme-toggle:hover {
+            opacity: 0.8;
         }
         
         .theme-toggle-icon {
-            width: 24px;
-            height: 24px;
-            color: var(--text-primary);
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
             transition: color 0.3s ease;
+        }
+
+        .theme-toggle-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
         }
         
         .status {
@@ -775,7 +793,7 @@
             </div>
             <div class="theme-toggle-container">
                 <div class="theme-toggle-icon" id="themeIcon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
                         <path id="themeIconPath" d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
                     </svg>
                 </div>
@@ -1169,9 +1187,18 @@
             // Group flights by day
             const days = groupFlightsByDay(flights);
             
+            // Get today's date string for comparison
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            
             // Render day sections
-            container.innerHTML = days.map(day => `
-                <div class="day-section" id="day-${day.dateString}">
+            container.innerHTML = days.map(day => {
+                // Collapse all days except today
+                const isToday = day.dateString === todayStr;
+                const collapsedClass = isToday ? '' : 'collapsed';
+                
+                return `
+                <div class="day-section ${collapsedClass}" id="day-${day.dateString}">
                     <div class="day-header" onclick="toggleDay('${day.dateString}')">
                         <h2>
                             <span class="collapse-icon">▼</span>
@@ -1229,7 +1256,8 @@
                         `).join('')}
                     </div>
                 </div>
-            `).join('');
+                `;
+            }).join('');
             
             // Initialize maps for all flights (staggered to avoid overwhelming server)
             // No pre-loading - everything loads on demand when user expands a card

@@ -125,21 +125,22 @@ A new flight is created when:
 3. Check that flights are being created properly
 4. Verify positions are being recorded
 
-### Phase 3: New API Endpoints (TODO)
-Create REST APIs for the new schema:
-- `GET /api/flights` - List flights
-- `GET /api/flights/{id}` - Flight details
-- `GET /api/flights/{id}/positions` - Flight path
-- `GET /api/aircraft` - List aircraft
-- `GET /api/aircraft/{icao}` - Aircraft details
-- `GET /api/aircraft/{icao}/flights` - All flights for aircraft
+### Phase 3: New API Endpoints ✅ (COMPLETE)
+REST APIs for the new schema have been created:
+- `GET /api/flights` - List flights ✅
+- `GET /api/flights/{id}` - Flight details ✅
+- `GET /api/flights/{id}/positions` - Flight path ✅
+- `GET /api/aircraft` - List aircraft ✅
+- `GET /api/aircraft/{icao}` - Aircraft details ✅
+- `GET /api/aircraft/{icao}/flights` - All flights for aircraft ✅
 
-### Phase 4: New Replay UI (TODO)
-Replace `index-replay.html` with:
-- List of flights (grouped by callsign/date)
-- Click to replay a specific flight
-- Show flight path on map
-- Timeline scrubber
+### Phase 4: New Replay UI ✅ (COMPLETE)
+`index-replay.html` has been rebuilt as the History page with:
+- List of flights (grouped by day) ✅
+- Expandable flight cards ✅
+- Flight path on map for each flight ✅
+- Aircraft photos from Planespotters.net ✅
+- On-demand loading for performance ✅
 
 ### Phase 5: Backfill (OPTIONAL)
 Migrate existing `flight_snapshots` data to new schema

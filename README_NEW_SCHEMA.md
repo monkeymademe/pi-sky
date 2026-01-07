@@ -206,12 +206,17 @@ python3 inspect_flight_db.py /path/to/flights.db
 2. ✅ Use inspection tool to verify data
 3. ✅ Run SQL queries to explore
 
-### Coming Soon (TODO)
+### Completed ✅
 
-1. **New API endpoints** for querying flights/aircraft
-2. **New replay UI** to replace old snapshot-based replay
-3. **Backfill tool** to migrate old snapshots (optional)
-4. **Enhanced features** like flight statistics, heatmaps, etc.
+1. **New API endpoints** for querying flights/aircraft ✅
+2. **New replay UI** (History page) to replace old snapshot-based replay ✅
+3. **Aircraft photos** integration with Planespotters.net ✅
+4. **Connection status and stats** on all pages ✅
+
+### Optional Future Enhancements
+
+1. **Backfill tool** to migrate old snapshots (optional)
+2. **Enhanced features** like flight statistics, heatmaps, etc.
 
 ## 🐛 Troubleshooting
 
