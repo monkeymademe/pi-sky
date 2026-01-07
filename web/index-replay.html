@@ -1213,9 +1213,10 @@
                             <div class="flight-card collapsed" data-flight-id="${flight.id}" id="flight-card-${flight.id}">
                                 <div class="flight-header" onclick="toggleFlightCard(${flight.id})">
                                     <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                                        <div>
+                                        <div style="flex: 1;">
                                             <h3 style="display: flex; align-items: center; gap: 10px; margin: 0;">
                                                 <span class="expand-icon">▼</span>
+                                                ${flight.airline_logo ? `<img src="${flight.airline_logo}" alt="${flight.airline_code || 'Airline'}" title="${flight.airline_name || flight.airline_code || 'Airline'}" onerror="this.style.display='none'" style="width: 32px; height: 32px; object-fit: contain; border-radius: 4px; background: rgba(255,255,255,0.2); padding: 2px;">` : ''}
                                                 ${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})
                                             </h3>
                                             ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
@@ -1358,10 +1359,10 @@
                                     <value>${formatDateTime(flight.end_time)}</value>
                                 </div>
                             ` : ''}
-                            ${flight.aircraft && flight.aircraft.registration ? `
+                            ${flight.aircraft && (flight.aircraft.model || flight.aircraft.type || flight.aircraft.registration) ? `
                                 <div class="flight-detail-item">
                                     <label>Aircraft</label>
-                                    <value>${flight.aircraft.registration}${flight.aircraft.model ? ' - ' + flight.aircraft.model : ''}</value>
+                                    <value>${flight.aircraft.model || flight.aircraft.type || 'Unknown'}${flight.aircraft.registration ? ` (${flight.aircraft.registration})` : ''}</value>
                                 </div>
                             ` : ''}
                             <div class="aircraft-photo-container" id="aircraft-photo-${flightId}">

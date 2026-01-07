@@ -993,13 +993,29 @@ def process_aircraft_data(aircraft_data):
                     }, aircraft_icao=icao)
                 else:
                     flight_id = active_flight['id']
+                    active_callsign = active_flight.get('callsign')
                     
                     # Check if callsign changed (indicates new flight)
-                    if callsign and active_flight.get('callsign') and callsign != active_flight['callsign']:
+                    # Cases to handle:
+                    # 1. Active flight has no callsign, new callsign arrives -> new flight
+                    # 2. Active flight has callsign A, new callsign B arrives -> new flight
+                    # 3. Active flight has callsign, new data has no callsign -> keep existing
+                    # 4. Both have same callsign -> update existing flight
+                    callsign_changed = False
+                    if callsign:
+                        # We have a callsign in new data
+                        if not active_callsign:
+                            # Active flight has no callsign, but we now have one -> new flight
+                            callsign_changed = True
+                        elif callsign != active_callsign:
+                            # Both have callsigns but they're different -> new flight
+                            callsign_changed = True
+                    
+                    if callsign_changed:
                         # End old flight, start new one
                         flight_db.end_flight(flight_id, 'callsign_change')
                         flight_db.log_flight_event(flight_id, 'callsign_change', {
-                            'old_callsign': active_flight['callsign'],
+                            'old_callsign': active_callsign,
                             'new_callsign': callsign
                         }, aircraft_icao=icao)
                         
@@ -2151,6 +2167,16 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     # Set position count to None - will be fetched on demand when user expands
                     position_count = None
                     
+                    # Get airline logo URL if airline_code is available
+                    airline_logo = None
+                    airline_code = flight.get('airline_code')
+                    if airline_code:
+                        try:
+                            from airline_logos import get_logo_url
+                            airline_logo = get_logo_url(airline_code)
+                        except Exception as e:
+                            print(f"   Warning: Could not get airline logo for {airline_code}: {e}")
+                    
                     flight_data = {
                         'id': flight.get('id'),
                         'callsign': flight.get('callsign'),
@@ -2166,8 +2192,9 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'destination': flight.get('destination'),
                         'origin_country': flight.get('origin_country'),
                         'destination_country': flight.get('destination_country'),
-                        'airline_code': flight.get('airline_code'),
+                        'airline_code': airline_code,
                         'airline_name': flight.get('airline_name'),
+                        'airline_logo': airline_logo,
                         'start_time': flight.get('start_time'),
                         'end_time': flight.get('end_time'),
                         'status': flight.get('status'),
