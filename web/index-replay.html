@@ -1117,13 +1117,41 @@
             const days = {};
             
             flights.forEach(flight => {
-                // Use start_time to determine the day
-                const startDate = new Date(flight.start_time);
-                const dayKey = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                // Extract date directly from ISO string to avoid timezone conversion issues
+                // This ensures flights are grouped by their actual date, not UTC-converted date
+                const startTimeStr = flight.start_time || '';
+                let dayKey;
+                
+                if (startTimeStr.includes('T')) {
+                    // Extract date part directly: "2026-01-26T16:51:57" -> "2026-01-26"
+                    dayKey = startTimeStr.split('T')[0];
+                } else if (startTimeStr.length >= 10) {
+                    // Fallback: take first 10 characters if format is different
+                    dayKey = startTimeStr.substring(0, 10);
+                } else {
+                    // Last resort: use Date object (may have timezone issues)
+                    const startDate = new Date(flight.start_time);
+                    dayKey = startDate.toISOString().split('T')[0];
+                }
+                
+                // Normalize dayKey to ensure consistent format (YYYY-MM-DD)
+                // This prevents duplicate groups from slight format variations
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
+                    console.warn('Unexpected date format:', dayKey, 'from flight:', flight.start_time);
+                    // Try to fix it
+                    const match = dayKey.match(/(\d{4})-(\d{2})-(\d{2})/);
+                    if (match) {
+                        dayKey = `${match[1]}-${match[2]}-${match[3]}`;
+                    }
+                }
                 
                 if (!days[dayKey]) {
+                    // Create date object for display formatting (use local timezone)
+                    const [year, month, day] = dayKey.split('-').map(Number);
+                    const dateForDisplay = new Date(year, month - 1, day);
+                    
                     days[dayKey] = {
-                        date: startDate,
+                        date: dateForDisplay,
                         dateString: dayKey,
                         flights: []
                     };
@@ -1133,32 +1161,72 @@
             });
             
             // Sort days by date (most recent first)
-            return Object.keys(days)
+            const sortedDays = Object.keys(days)
                 .sort((a, b) => b.localeCompare(a))
                 .map(key => days[key]);
+            
+            // Debug: log duplicate day keys if any
+            const dayKeys = Object.keys(days);
+            const uniqueKeys = new Set(dayKeys);
+            if (dayKeys.length !== uniqueKeys.size) {
+                console.warn('⚠️ Duplicate day keys detected!', dayKeys);
+            }
+            
+            return sortedDays;
         }
         
         // Format date for display
-        function formatDate(date) {
+        // Accepts either a Date object or a dateString (YYYY-MM-DD)
+        function formatDate(dateOrString) {
+            let dateStr;
+            let dateObj;
+            
+            if (typeof dateOrString === 'string') {
+                // If it's already a string, use it directly
+                dateStr = dateOrString;
+                // Parse it to create date object for formatting
+                const [year, month, day] = dateStr.split('-').map(Number);
+                dateObj = new Date(year, month - 1, day);
+            } else {
+                // It's a Date object - extract date string without timezone conversion
+                // Use the dateString from the day object if available, otherwise extract from date
+                dateObj = dateOrString;
+                // Get local date components to avoid UTC conversion issues
+                const year = dateObj.getFullYear();
+                const month = dateObj.getMonth() + 1;
+                const day = dateObj.getDate();
+                dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            }
+            
+            // Format the full date string with custom format: "Wednesday: January 28th, 2026"
+            const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+            const monthName = dateObj.toLocaleDateString('en-US', { month: 'long' });
+            const dayNum = dateObj.getDate();
+            const yearNum = dateObj.getFullYear();
+            
+            // Add ordinal suffix (1st, 2nd, 3rd, 4th, etc.)
+            function getOrdinalSuffix(n) {
+                const s = ['th', 'st', 'nd', 'rd'];
+                const v = n % 100;
+                return s[(v - 20) % 10] || s[v] || s[0];
+            }
+            const dayWithOrdinal = `${dayNum}${getOrdinalSuffix(dayNum)}`;
+            
+            const fullDateStr = `${weekday}: ${monthName} ${dayWithOrdinal}, ${yearNum}`;
+            
+            // Compare dates using string format to avoid timezone issues
             const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
             const yesterday = new Date(today);
             yesterday.setDate(yesterday.getDate() - 1);
-            
-            const dateStr = date.toISOString().split('T')[0];
-            const todayStr = today.toISOString().split('T')[0];
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
             
             if (dateStr === todayStr) {
-                return 'Today';
+                return `Today (${fullDateStr})`;
             } else if (dateStr === yesterdayStr) {
-                return 'Yesterday';
+                return `Yesterday (${fullDateStr})`;
             } else {
-                return date.toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                });
+                return fullDateStr;
             }
         }
         
@@ -1202,7 +1270,7 @@
                     <div class="day-header" onclick="toggleDay('${day.dateString}')">
                         <h2>
                             <span class="collapse-icon">▼</span>
-                            ${formatDate(day.date)}
+                            ${formatDate(day.dateString)}
                         </h2>
                         <div class="day-info">
                             <span class="day-count">${day.flights.length} flight${day.flights.length !== 1 ? 's' : ''}</span>
