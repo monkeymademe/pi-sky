@@ -997,22 +997,23 @@ def process_aircraft_data(aircraft_data):
                     
                     # Check if callsign changed (indicates new flight)
                     # Cases to handle:
-                    # 1. Active flight has no callsign, new callsign arrives -> new flight
-                    # 2. Active flight has callsign A, new callsign B arrives -> new flight
-                    # 3. Active flight has callsign, new data has no callsign -> keep existing
-                    # 4. Both have same callsign -> update existing flight
+                    # 1. Active flight has no callsign, new callsign arrives -> UPDATE existing flight (same flight, now identified)
+                    # 2. Active flight has callsign A, new callsign B arrives -> NEW flight (different flight)
+                    # 3. Active flight has callsign, new data has no callsign -> UPDATE existing flight (keep existing)
+                    # 4. Both have same callsign -> UPDATE existing flight
                     callsign_changed = False
                     if callsign:
                         # We have a callsign in new data
                         if not active_callsign:
-                            # Active flight has no callsign, but we now have one -> new flight
-                            callsign_changed = True
+                            # Active flight has no callsign, but we now have one -> UPDATE existing flight
+                            # This is the same flight, just now identified - don't create a new flight
+                            callsign_changed = False  # Keep same flight, just update it
                         elif callsign != active_callsign:
-                            # Both have callsigns but they're different -> new flight
+                            # Both have callsigns but they're different -> NEW flight
                             callsign_changed = True
                     
                     if callsign_changed:
-                        # End old flight, start new one
+                        # End old flight, start new one (only when callsign actually changed from one to another)
                         flight_db.end_flight(flight_id, 'callsign_change')
                         flight_db.log_flight_event(flight_id, 'callsign_change', {
                             'old_callsign': active_callsign,
@@ -1029,17 +1030,45 @@ def process_aircraft_data(aircraft_data):
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
                     else:
-                        # Update flight info if we learned new details
+                        # Update flight info if we learned new details (including callsign if it was missing)
                         mem = flight_memory.get(icao, {})
+                        
+                        # Build flight info update
+                        flight_info = {}
+                        
+                        # Update callsign if we now have one and the flight didn't have one
+                        if callsign and not active_callsign:
+                            # Update the callsign in the database
+                            flight_db.update_flight_callsign(flight_id, callsign)
+                            flight_db.log_flight_event(flight_id, 'callsign_identified', {
+                                'callsign': callsign
+                            }, aircraft_icao=icao)
+                        
+                        # Update route info if available
                         if mem.get('origin') or mem.get('destination'):
-                            flight_info = {
-                                'origin': mem.get('origin'),
-                                'destination': mem.get('destination'),
-                                'origin_country': mem.get('origin_country'),
-                                'destination_country': mem.get('destination_country'),
-                                'airline_code': mem.get('airline_code'),
-                                'airline_name': mem.get('airline_name')
-                            }
+                            flight_info['origin'] = mem.get('origin')
+                            flight_info['destination'] = mem.get('destination')
+                            flight_info['origin_country'] = mem.get('origin_country')
+                            flight_info['destination_country'] = mem.get('destination_country')
+                            flight_info['airline_code'] = mem.get('airline_code')
+                            flight_info['airline_name'] = mem.get('airline_name')
+                        
+                        # Also check enriched data for route info
+                        if enriched.get('origin') or enriched.get('destination'):
+                            if not flight_info.get('origin'):
+                                flight_info['origin'] = enriched.get('origin')
+                            if not flight_info.get('destination'):
+                                flight_info['destination'] = enriched.get('destination')
+                            if not flight_info.get('origin_country'):
+                                flight_info['origin_country'] = enriched.get('origin_country')
+                            if not flight_info.get('destination_country'):
+                                flight_info['destination_country'] = enriched.get('destination_country')
+                            if not flight_info.get('airline_code'):
+                                flight_info['airline_code'] = enriched.get('airline_code')
+                            if not flight_info.get('airline_name'):
+                                flight_info['airline_name'] = enriched.get('airline_name')
+                        
+                        if flight_info:
                             flight_db.update_flight_info(flight_id, flight_info)
                 
                 # Insert position (only if we have valid coordinates)

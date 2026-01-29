@@ -790,6 +790,27 @@ class FlightDatabase:
             conn.commit()
             conn.close()
     
+    def update_flight_callsign(self, flight_id, callsign):
+        """
+        Update the callsign for a flight (e.g., when an unidentified flight becomes identified)
+        
+        Args:
+            flight_id: ID of the flight
+            callsign: New callsign
+        """
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                UPDATE flights 
+                SET callsign = ?
+                WHERE id = ?
+            ''', (callsign, flight_id))
+            
+            conn.commit()
+            conn.close()
+    
     def insert_position(self, flight_id, position_data):
         """
         Insert a position record for a flight
