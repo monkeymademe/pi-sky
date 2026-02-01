@@ -115,6 +115,56 @@ def broadcast_sse(data):
             for client in stale_clients:
                 sse_clients.discard(client)
 
+def validate_config(config):
+    """Validate configuration and return error message if invalid"""
+    # Required fields
+    required_fields = ['dump1090_url', 'receiver_lat', 'receiver_lon']
+    for field in required_fields:
+        if field not in config:
+            return f'Missing required field: {field}'
+    
+    # Validate types
+    if not isinstance(config.get('receiver_lat'), (int, float)):
+        return 'receiver_lat must be a number'
+    if not isinstance(config.get('receiver_lon'), (int, float)):
+        return 'receiver_lon must be a number'
+    if not isinstance(config.get('http_port'), int):
+        return 'http_port must be an integer'
+    if not isinstance(config.get('websocket_port'), int):
+        return 'websocket_port must be an integer'
+    
+    # Validate ranges
+    if not (-90 <= config.get('receiver_lat', 0) <= 90):
+        return 'receiver_lat must be between -90 and 90'
+    if not (-180 <= config.get('receiver_lon', 0) <= 180):
+        return 'receiver_lon must be between -180 and 180'
+    if not (1 <= config.get('http_port', 0) <= 65535):
+        return 'http_port must be between 1 and 65535'
+    if not (1 <= config.get('websocket_port', 0) <= 65535):
+        return 'websocket_port must be between 1 and 65535'
+    
+    # Validate URL format
+    dump1090_url = config.get('dump1090_url', '')
+    if not dump1090_url.startswith(('http://', 'https://')):
+        return 'dump1090_url must start with http:// or https://'
+    
+    # Validate nested objects if present
+    if 'map_generation' in config:
+        mg = config['map_generation']
+        if 'min_altitude' in mg and not isinstance(mg['min_altitude'], (int, float)):
+            return 'map_generation.min_altitude must be a number'
+        if 'max_distance_km' in mg and not isinstance(mg['max_distance_km'], (int, float)):
+            return 'map_generation.max_distance_km must be a number'
+    
+    if 'database' in config:
+        db = config['database']
+        if 'cleanup_days' in db and not isinstance(db['cleanup_days'], (int, float)):
+            return 'database.cleanup_days must be a number'
+        if db.get('cleanup_days', 0) < 0:
+            return 'database.cleanup_days must be >= 0'
+    
+    return None  # Valid
+
 def load_config():
     """Load configuration from config.json"""
     try:
@@ -420,24 +470,29 @@ def generate_clear_skies_map(config):
     receiver_lon = config.get('receiver_lon')
     hide_receiver = config.get('hide_receiver', False)
     
+    # Get nearest_airport from top level (moved from clear_skies section)
+    nearest_airport = config.get('nearest_airport')
+    # Normalize: strip whitespace and convert empty strings to None
+    if nearest_airport:
+        nearest_airport = nearest_airport.strip()
+        if not nearest_airport:
+            nearest_airport = None
+    else:
+        nearest_airport = None
+    
     # Determine location to center on
     target_lat = None
     target_lon = None
     location_name = "Receiver"
     
-    # Priority 1: Airport if configured (and hide_receiver is true, or just use airport if configured)
-    nearest_airport = clear_skies_config.get('nearest_airport')
+    # Priority 1: Airport if configured and not blank
     use_airport = False
     
-    if hide_receiver:
-        # If hiding receiver, always prefer airport
+    if nearest_airport:
+        # Airport is configured, try to use it
         use_airport = True
-    elif nearest_airport:
-        # If airport is configured, use it
-        use_airport = True
-    
-    if use_airport and nearest_airport:
-        # Try to get airport coordinates
+        
+        # Try to get airport coordinates from clear_skies config (cached) or lookup
         airport_lat = clear_skies_config.get('airport_lat')
         airport_lon = clear_skies_config.get('airport_lon')
         
@@ -459,7 +514,7 @@ def generate_clear_skies_map(config):
                 print(f"⚠️  Warning: Could not find coordinates for airport {nearest_airport}, using receiver location")
                 use_airport = False
     
-    # Priority 2: Receiver location (if no airport or airport lookup failed)
+    # Priority 2: Receiver location (if no airport, airport is blank, or airport lookup failed)
     if target_lat is None or target_lon is None:
         if receiver_lat is not None and receiver_lon is not None:
             target_lat = receiver_lat
@@ -709,21 +764,7 @@ def process_aircraft_data(aircraft_data):
         
         # Add new flights or update existing ones
         if icao not in flight_memory:
-            # New flight detected - save event to database
-            if flight_db:
-                try:
-                    config = load_config()
-                    if config.get('database', {}).get('save_events', True):
-                        flight_db.save_event(icao, 'new_flight', {
-                            'callsign': callsign,
-                            'lat': lat,
-                            'lon': lon,
-                            'altitude': ac.get('alt_baro') or ac.get('altitude')
-                        })
-                except Exception as e:
-                    pass  # Don't fail on database errors
-            
-            # New flight - lookup route info
+            # New flight detected - lookup route info
             flight_memory[icao] = {
                 'callsign': callsign,
                 'missed_cycles': 0,
@@ -782,18 +823,6 @@ def process_aircraft_data(aircraft_data):
                                     process_aircraft_data._route_success_logged.add(icao)
                                     
                                     # Save event to database
-                                    if flight_db:
-                                        try:
-                                            config = load_config()
-                                            if config.get('database', {}).get('save_events', True):
-                                                flight_db.save_event(icao, 'route_found', {
-                                                    'callsign': callsign,
-                                                    'origin': origin,
-                                                    'destination': dest,
-                                                    'source': route_info.get('source', 'unknown')
-                                                })
-                                        except Exception as e:
-                                            pass  # Don't fail on database errors
                         else:
                             # Route lookup returned None (no route found)
                             flight_memory[icao]['lookup_error'] = 'No route found'
@@ -830,14 +859,6 @@ def process_aircraft_data(aircraft_data):
                         flight_memory[icao]['aircraft_type'] = aircraft_info.get('type')
                         flight_memory[icao]['aircraft_registration'] = aircraft_info.get('registration')
                         
-                        # Save event to database
-                        if flight_db:
-                            try:
-                                config = load_config()
-                                if config.get('database', {}).get('save_events', True):
-                                    flight_db.save_event(icao, 'aircraft_info_found', aircraft_info)
-                            except Exception as e:
-                                pass  # Don't fail on database errors
                 except Exception as e:
                     pass  # Silently fail - aircraft info is optional
         else:
@@ -987,10 +1008,6 @@ def process_aircraft_data(aircraft_data):
                         'airline_name': enriched.get('airline_name')
                     }
                     flight_id = flight_db.start_flight(icao, callsign, flight_info)
-                    flight_db.log_flight_event(flight_id, 'new_flight', {
-                        'callsign': callsign,
-                        'altitude': enriched.get('altitude')
-                    }, aircraft_icao=icao)
                 else:
                     flight_id = active_flight['id']
                     active_callsign = active_flight.get('callsign')
@@ -1015,10 +1032,6 @@ def process_aircraft_data(aircraft_data):
                     if callsign_changed:
                         # End old flight, start new one (only when callsign actually changed from one to another)
                         flight_db.end_flight(flight_id, 'callsign_change')
-                        flight_db.log_flight_event(flight_id, 'callsign_change', {
-                            'old_callsign': active_callsign,
-                            'new_callsign': callsign
-                        }, aircraft_icao=icao)
                         
                         flight_info = {
                             'origin': enriched.get('origin'),
@@ -1040,9 +1053,6 @@ def process_aircraft_data(aircraft_data):
                         if callsign and not active_callsign:
                             # Update the callsign in the database
                             flight_db.update_flight_callsign(flight_id, callsign)
-                            flight_db.log_flight_event(flight_id, 'callsign_identified', {
-                                'callsign': callsign
-                            }, aircraft_icao=icao)
                         
                         # Update route info if available
                         if mem.get('origin') or mem.get('destination'):
@@ -1188,7 +1198,7 @@ def process_aircraft_data(aircraft_data):
     stats['receiver_lon'] = config.get('receiver_lon')
     stats['hide_receiver'] = config.get('hide_receiver', False)
     clear_skies_config = config.get('clear_skies', {})
-    stats['nearest_airport'] = clear_skies_config.get('nearest_airport')
+    stats['nearest_airport'] = config.get('nearest_airport')  # Now at top level
     stats['nearest_airport_lat'] = clear_skies_config.get('airport_lat')
     stats['nearest_airport_lon'] = clear_skies_config.get('airport_lon')
     
@@ -1218,9 +1228,15 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=os.path.join(os.path.dirname(__file__), 'web'), **kwargs)
 
     def do_GET(self):
+        # Parse path and query string (for routes that need exact match)
+        path_parts = self.path.split('?', 1)
+        path = path_parts[0]
+        
         if self.path == '/events':
             self.handle_sse()
-        elif self.path == '/api/replay/stats':
+        elif path == '/api/config':
+            self.handle_config_get()
+        elif path == '/api/replay/stats':
             self.handle_replay_stats()
         elif self.path.startswith('/api/replay/stream'):
             self.handle_replay_stream()
@@ -1232,6 +1248,17 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.handle_aircraft_api()
         else:
             super().do_GET()
+    
+    def do_POST(self):
+        # Parse path and query string
+        path_parts = self.path.split('?', 1)
+        path = path_parts[0]
+        
+        if path == '/api/config':
+            self.handle_config_post()
+        else:
+            self.send_response(404)
+            self.end_headers()
     
     def handle_replay_stats(self):
         """Handle replay stats request - returns metadata only, no flight data"""
@@ -2429,6 +2456,119 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'error': error_msg}).encode())
 
+    def handle_config_get(self):
+        """Handle GET /api/config - return current configuration"""
+        try:
+            config = load_config()
+            config_json = json.dumps(config)
+            config_bytes = config_json.encode('utf-8')
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(config_bytes)))
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Expires', '0')
+            self.end_headers()
+            self.wfile.write(config_bytes)
+            self.wfile.flush()  # Ensure data is sent immediately
+            print(f"✓ Config sent to client ({len(config_bytes)} bytes)")
+        except Exception as e:
+            error_msg = str(e)
+            import traceback
+            print(f"Config GET error: {error_msg}")
+            print(traceback.format_exc())
+            error_json = json.dumps({'error': error_msg})
+            error_bytes = error_json.encode('utf-8')
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(error_bytes)))
+            self.end_headers()
+            self.wfile.write(error_bytes)
+            self.wfile.flush()
+    
+    def handle_config_post(self):
+        """Handle POST /api/config - save configuration"""
+        try:
+            # Read request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'No data provided'}).encode())
+                return
+            
+            body = self.rfile.read(content_length)
+            new_config = json.loads(body.decode('utf-8'))
+            
+            # Validate configuration
+            validation_error = validate_config(new_config)
+            if validation_error:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': validation_error}).encode())
+                return
+            
+            # Backup existing config
+            backup_path = f'config.json.backup.{int(time.time())}'
+            try:
+                if os.path.exists('config.json'):
+                    import shutil
+                    shutil.copy2('config.json', backup_path)
+                    print(f"✓ Config backed up to {backup_path}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not backup config: {e}")
+            
+            # Save new config
+            with open('config.json', 'w') as f:
+                json.dump(new_config, f, indent=4)
+            
+            print("✓ Configuration saved successfully")
+            
+            response_data = {
+                'success': True,
+                'message': 'Configuration saved successfully',
+                'backup': backup_path if os.path.exists(backup_path) else None,
+                'note': 'Server restart may be required for some changes to take effect'
+            }
+            response_json = json.dumps(response_data)
+            response_bytes = response_json.encode('utf-8')
+            
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(response_bytes)))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(response_bytes)
+            self.wfile.flush()  # Ensure response is sent immediately
+            print(f"✓ Config save response sent ({len(response_bytes)} bytes)")
+            
+        except json.JSONDecodeError as e:
+            error_msg = f'Invalid JSON: {str(e)}'
+            error_json = json.dumps({'error': error_msg})
+            error_bytes = error_json.encode('utf-8')
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(error_bytes)))
+            self.end_headers()
+            self.wfile.write(error_bytes)
+            self.wfile.flush()
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Config POST error: {error_msg}")
+            import traceback
+            print(traceback.format_exc())
+            error_json = json.dumps({'error': error_msg})
+            error_bytes = error_json.encode('utf-8')
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(error_bytes)))
+            self.end_headers()
+            self.wfile.write(error_bytes)
+            self.wfile.flush()
+
     def handle_sse(self):
         global latest_flight_data
 
@@ -2504,8 +2644,8 @@ async def flight_data_loop(config):
         try:
             stats_before = flight_db.get_database_stats()
             print(f"   Current database: {stats_before['snapshot_count']} snapshots, {stats_before['database_size_mb']} MB")
-            snapshots_deleted, events_deleted = flight_db.cleanup_old_data(cleanup_days)
-            if snapshots_deleted > 0 or events_deleted > 0:
+            snapshots_deleted = flight_db.cleanup_old_data(cleanup_days)
+            if snapshots_deleted > 0:
                 stats_after = flight_db.get_database_stats()
                 print(f"   After startup cleanup: {stats_after['snapshot_count']} snapshots, {stats_after['database_size_mb']} MB")
         except Exception as e:
@@ -2601,16 +2741,16 @@ async def flight_data_loop(config):
                 stats_before = flight_db.get_database_stats()
                 
                 # Run cleanup
-                snapshots_deleted, events_deleted = flight_db.cleanup_old_data(cleanup_days)
+                snapshots_deleted = flight_db.cleanup_old_data(cleanup_days)
                 
                 # Get stats after cleanup
                 stats_after = flight_db.get_database_stats()
                 
-                if snapshots_deleted > 0 or events_deleted > 0:
+                if snapshots_deleted > 0:
                     print(f"🧹 Database cleanup complete:")
                     print(f"   Before: {stats_before['snapshot_count']} snapshots, {stats_before['database_size_mb']} MB")
                     print(f"   After: {stats_after['snapshot_count']} snapshots, {stats_after['database_size_mb']} MB")
-                    print(f"   Deleted: {snapshots_deleted} snapshots, {events_deleted} events (older than {cleanup_days} days)")
+                    print(f"   Deleted: {snapshots_deleted} snapshots (older than {cleanup_days} days)")
                 else:
                     print(f"🧹 Database cleanup: No data older than {cleanup_days} days to delete")
             except Exception as e:

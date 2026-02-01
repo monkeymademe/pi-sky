@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Tracker - Configuration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            background: #f5f5f5;
+            padding: 15px 20px;
+            font-weight: 600;
+            font-size: 1.1em;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .section-header:hover {
+            background: #eeeeee;
+        }
+
+        .section-header::after {
+            content: '▼';
+            transition: transform 0.3s;
+        }
+
+        .section-header.collapsed::after {
+            transform: rotate(-90deg);
+        }
+
+        .section-content {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .section-content.collapsed {
+            display: none;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #555;
+            font-size: 0.9em;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="url"] {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        input[type="url"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .help-text {
+            font-size: 0.85em;
+            color: #777;
+            margin-top: 5px;
+        }
+
+        .horizontal-rule {
+            grid-column: 1 / -1;
+            height: 1px;
+            background: #e0e0e0;
+            margin: 15px 0;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #667eea;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(26px);
+        }
+
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 20px;
+        }
+
+        .toggle-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-item label {
+            margin: 0;
+            font-weight: 500;
+            color: #555;
+            cursor: pointer;
+        }
+
+        .coord-row {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .nav-links {
+            text-align: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            margin: 0 15px;
+        }
+
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ Configuration</h1>
+            <p>Manage your flight tracker settings</p>
+        </div>
+
+        <div class="content">
+            <div id="status" class="status"></div>
+
+            <form id="configForm">
+                <!-- Receiver Settings -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        Receiver Settings
+                    </div>
+                    <div class="section-content">
+                        <!-- Latitude and Longitude Row -->
+                        <div class="coord-row">
+                            <div class="form-group">
+                                <label for="receiver_lat">Receiver Latitude</label>
+                                <input type="number" id="receiver_lat" name="receiver_lat" step="any" min="-90" max="90" required>
+                                <span class="help-text">Your receiver's latitude (-90 to 90)</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="receiver_lon">Receiver Longitude</label>
+                                <input type="number" id="receiver_lon" name="receiver_lon" step="any" min="-180" max="180" required>
+                                <span class="help-text">Your receiver's longitude (-180 to 180)</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Nearest Airport Code -->
+                        <div class="form-group full-width">
+                            <label for="clear_skies_airport">Nearest Airport Code</label>
+                            <input type="text" id="clear_skies_airport" name="clear_skies_airport" maxlength="4" style="text-transform: uppercase;">
+                            <span class="help-text">ICAO or IATA airport code (e.g., EDDB)</span>
+                        </div>
+                        
+                        <!-- Toggle Switches Row -->
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="hide_receiver">Hide receiver on map</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="hide_receiver" name="hide_receiver">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="toggle-item">
+                                    <label for="show_test_flight">Show test flight</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="show_test_flight" name="show_test_flight">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="toggle-item">
+                                    <label for="clear_skies_enabled">Enable clear skies map</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="clear_skies_enabled" name="clear_skies_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Server Settings -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        Server Settings
+                    </div>
+                    <div class="section-content">
+                        <div class="form-group full-width">
+                            <label for="dump1090_url">dump1090 URL</label>
+                            <input type="url" id="dump1090_url" name="dump1090_url" required>
+                            <span class="help-text">URL to your dump1090 aircraft.json endpoint</span>
+                        </div>
+                        <div class="horizontal-rule"></div>
+                        <!-- HTTP Settings Row -->
+                        <div class="coord-row">
+                            <div class="form-group">
+                                <label for="http_host">HTTP Host</label>
+                                <input type="text" id="http_host" name="http_host" required>
+                                <span class="help-text">HTTP server bind address</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="http_port">HTTP Port</label>
+                                <input type="number" id="http_port" name="http_port" min="1" max="65535" required>
+                                <span class="help-text">HTTP server port (1-65535)</span>
+                            </div>
+                        </div>
+                        <!-- WebSocket Settings Row -->
+                        <div class="coord-row">
+                            <div class="form-group">
+                                <label for="websocket_host">WebSocket Host</label>
+                                <input type="text" id="websocket_host" name="websocket_host" required>
+                                <span class="help-text">WebSocket server bind address</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="websocket_port">WebSocket Port</label>
+                                <input type="number" id="websocket_port" name="websocket_port" min="1" max="65535" required>
+                                <span class="help-text">WebSocket server port (1-65535)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- E-ink Map Generation -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        E-ink Map Generation
+                    </div>
+                    <div class="section-content">
+                        <!-- Enable Toggle (Left Aligned) -->
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="map_enabled">Enable map generation</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="map_enabled" name="map_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Toggle Row: Show Route info and Prefer closest flight -->
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="map_require_route">Show Route info</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="map_require_route" name="map_require_route">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="toggle-item">
+                                    <label for="map_prefer_closest">Prefer closest flight</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="map_prefer_closest" name="map_prefer_closest">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Min Interval -->
+                        <div class="form-group full-width">
+                            <label for="map_min_interval">Min Interval (seconds)</label>
+                            <input type="number" id="map_min_interval" name="map_min_interval" min="0">
+                            <span class="help-text">Minimum time between map updates</span>
+                        </div>
+                        <!-- Min Altitude and Max Distance Row -->
+                        <div class="coord-row">
+                            <div class="form-group">
+                                <label for="map_min_altitude">Min Altitude (feet)</label>
+                                <input type="number" id="map_min_altitude" name="map_min_altitude" min="0">
+                                <span class="help-text">Minimum altitude for map display</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="map_max_distance">Max Distance (km)</label>
+                                <input type="number" id="map_max_distance" name="map_max_distance" min="0">
+                                <span class="help-text">Maximum distance from receiver</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Database -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        Database Settings
+                    </div>
+                    <div class="section-content">
+                        <!-- Enable Database Toggle (Left Aligned) -->
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="db_enabled">Enable database</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="db_enabled" name="db_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Database Path -->
+                        <div class="form-group full-width">
+                            <label for="db_path">Database Path</label>
+                            <input type="text" id="db_path" name="db_path">
+                            <span class="help-text">Path to SQLite database file</span>
+                        </div>
+                        <!-- Snapshot Interval and Cleanup Days Row -->
+                        <div class="coord-row">
+                            <div class="form-group">
+                                <label for="db_snapshot_interval">Snapshot Interval (seconds)</label>
+                                <input type="number" id="db_snapshot_interval" name="db_snapshot_interval" min="1">
+                                <span class="help-text">How often to save snapshots</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="db_cleanup_days">Cleanup Days</label>
+                                <input type="number" id="db_cleanup_days" name="db_cleanup_days" min="0">
+                                <span class="help-text">Days of data to keep (0 = keep all)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button type="button" class="btn-secondary" onclick="loadConfig()">Reset</button>
+                    <button type="button" class="btn-secondary" onclick="testSetValue()" style="background: #ff9800; color: white;">Test Set Value</button>
+                    <button type="submit" class="btn-primary">Save Configuration</button>
+                </div>
+            </form>
+
+            <div class="nav-links">
+                <a href="index-maps.html">Map View</a>
+                <a href="index.html">Card View</a>
+                <a href="index-replay.html">Replay</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleSection(header) {
+            header.classList.toggle('collapsed');
+            const content = header.nextElementSibling;
+            content.classList.toggle('collapsed');
+        }
+        
+        function testSetValue() {
+            console.log('[TEST] Testing direct value setting...');
+            const el = document.getElementById('dump1090_url');
+            if (el) {
+                console.log('[TEST] Element found, current value:', el.value);
+                el.value = 'http://test.example.com/data/aircraft.json';
+                console.log('[TEST] Value set to:', el.value);
+                console.log('[TEST] Element.value after setting:', el.value);
+                showStatus('Test: Value should be set to test URL', 'info');
+            } else {
+                console.error('[TEST] Element NOT FOUND!');
+                showStatus('Test: Element not found!', 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 5000);
+        }
+
+        async function loadConfig(retryCount = 0) {
+            const maxRetries = 3;
+            console.log(`[loadConfig] Starting (attempt ${retryCount + 1}/${maxRetries + 1})`);
+            
+            try {
+                // Add timestamp to prevent caching
+                const url = '/api/config?' + new Date().getTime();
+                console.log('[loadConfig] Fetching from:', url);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    console.error('[loadConfig] Request timeout!');
+                    controller.abort();
+                }, 10000); // 10 second timeout
+                
+                console.log('[loadConfig] Starting fetch...');
+                const fetchPromise = fetch(url, {
+                    signal: controller.signal,
+                    cache: 'no-cache',
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                });
+                
+                console.log('[loadConfig] Fetch promise created, awaiting...');
+                const response = await fetchPromise;
+                clearTimeout(timeoutId);
+                
+                console.log('[loadConfig] Response received!');
+                console.log('[loadConfig] Status:', response.status);
+                console.log('[loadConfig] OK:', response.ok);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[loadConfig] Response not OK:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+                }
+                
+                console.log('[loadConfig] Reading response text...');
+                const text = await response.text();
+                console.log('[loadConfig] Text received, length:', text.length);
+                
+                if (!text || text.trim() === '') {
+                    console.error('[loadConfig] Empty response!');
+                    throw new Error('Empty response received');
+                }
+                
+                console.log('[loadConfig] Parsing JSON...');
+                let config;
+                try {
+                    config = JSON.parse(text);
+                    console.log('[loadConfig] JSON parsed successfully!');
+                } catch (e) {
+                    console.error('[loadConfig] JSON parse error:', e);
+                    console.error('[loadConfig] Failed text:', text.substring(0, 500));
+                    throw new Error('Invalid JSON response: ' + e.message);
+                }
+                
+                console.log('[loadConfig] Config keys:', Object.keys(config));
+                console.log('[loadConfig] dump1090_url:', config.dump1090_url);
+                console.log('[loadConfig] receiver_lat:', config.receiver_lat);
+                console.log('[loadConfig] About to populate form fields...');
+                
+                // CRITICAL: Verify we can access the DOM
+                const testEl = document.getElementById('dump1090_url');
+                if (!testEl) {
+                    console.error('[loadConfig] FATAL: dump1090_url element not found in DOM!');
+                    throw new Error('Form elements not found in DOM - page may not be fully loaded');
+                }
+                console.log('[loadConfig] ✓ DOM elements accessible');
+                
+                // First, verify all elements exist
+                const requiredIds = [
+                    'dump1090_url', 'receiver_lat', 'receiver_lon', 'hide_receiver', 'show_test_flight',
+                    'http_host', 'http_port', 'websocket_host', 'websocket_port',
+                    'map_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
+                    'map_min_altitude', 'map_max_distance',
+                    'clear_skies_enabled', 'clear_skies_airport',
+                    'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days'
+                ];
+                
+                const missingElements = requiredIds.filter(id => !document.getElementById(id));
+                if (missingElements.length > 0) {
+                    console.error('Missing elements:', missingElements);
+                } else {
+                    console.log('All elements found');
+                }
+                
+                // Helper function to safely set value (convert to string)
+                function setValue(id, value) {
+                    const el = document.getElementById(id);
+                    if (!el) {
+                        console.error(`Element not found: ${id}`);
+                        return false;
+                    }
+                    const strValue = value != null ? String(value) : '';
+                    el.value = strValue;
+                    console.log(`✓ Set ${id} = "${strValue}" (element type: ${el.tagName}, current value: "${el.value}")`);
+                    return true;
+                }
+                
+                // Helper function to safely set checkbox
+                function setChecked(id, checked) {
+                    const el = document.getElementById(id);
+                    if (!el) {
+                        console.error(`Element not found: ${id}`);
+                        return false;
+                    }
+                    el.checked = !!checked;
+                    console.log(`✓ Set ${id}.checked = ${el.checked} (element type: ${el.tagName})`);
+                    return true;
+                }
+                
+                console.log('Starting to populate fields...');
+                
+                // Basic settings
+                setValue('receiver_lat', config.receiver_lat);
+                setValue('receiver_lon', config.receiver_lon);
+                setChecked('hide_receiver', config.hide_receiver);
+                setChecked('show_test_flight', config.show_test_flight);
+
+                // Server settings
+                console.log('[loadConfig] Setting dump1090_url to:', config.dump1090_url);
+                const dump1090El = document.getElementById('dump1090_url');
+                if (dump1090El) {
+                    dump1090El.value = config.dump1090_url || '';
+                    console.log('[loadConfig] ✓ dump1090_url set, current value:', dump1090El.value);
+                } else {
+                    console.error('[loadConfig] ✗ dump1090_url element NOT FOUND!');
+                }
+                
+                setValue('http_host', config.http_host || '0.0.0.0');
+                setValue('http_port', config.http_port || 8080);
+                setValue('websocket_host', config.websocket_host || '0.0.0.0');
+                setValue('websocket_port', config.websocket_port || 8765);
+
+                // Map generation
+                const mg = config.map_generation || {};
+                setChecked('map_enabled', mg.enabled !== false);
+                setValue('map_min_interval', mg.min_interval_seconds || 300);
+                setChecked('map_prefer_closest', mg.prefer_closest !== false);
+                setChecked('map_require_route', mg.require_route !== false);
+                setValue('map_min_altitude', mg.min_altitude || 10000);
+                setValue('map_max_distance', mg.max_distance_km || 500);
+
+                    // Clear skies
+                    const cs = config.clear_skies || {};
+                    setChecked('clear_skies_enabled', cs.enabled !== false);
+                    // nearest_airport is now at top level
+                    setValue('clear_skies_airport', config.nearest_airport || '');
+
+                // Database
+                const db = config.database || {};
+                setChecked('db_enabled', db.enabled !== false);
+                setValue('db_path', db.db_path || 'flights.db');
+                setValue('db_snapshot_interval', db.snapshot_interval_seconds || 5);
+                setValue('db_cleanup_days', db.cleanup_days || 7);
+
+                console.log('[loadConfig] All fields populated');
+                
+                // Force a re-check after a brief delay to see if values stuck
+                setTimeout(() => {
+                    const verifyEl = document.getElementById('dump1090_url');
+                    console.log('[loadConfig] Verification check:');
+                    console.log('  - Element exists:', !!verifyEl);
+                    console.log('  - Element value:', verifyEl ? verifyEl.value : 'N/A');
+                    console.log('  - Element type:', verifyEl ? verifyEl.tagName : 'N/A');
+                    
+                    if (verifyEl && verifyEl.value) {
+                        console.log('[loadConfig] ✓ SUCCESS: dump1090_url is set to:', verifyEl.value);
+                    } else {
+                        console.warn('[loadConfig] ⚠ WARNING: dump1090_url is empty after setting!');
+                        console.warn('[loadConfig] This suggests values were set but then cleared, or elements were not found');
+                    }
+                }, 500);
+                
+                showStatus('Configuration loaded successfully', 'success');
+                console.log('[loadConfig] Function completed successfully');
+            } catch (error) {
+                console.error('Error loading config:', error);
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                
+                // Retry if we haven't exceeded max retries
+                if (retryCount < maxRetries && error.name !== 'AbortError') {
+                    console.log(`Retrying in 1 second... (${retryCount + 1}/${maxRetries})`);
+                    setTimeout(() => loadConfig(retryCount + 1), 1000);
+                } else {
+                    showStatus('Error loading configuration: ' + error.message, 'error');
+                }
+            }
+        }
+
+        document.getElementById('configForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            console.log('[SAVE] Form submit started');
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = 'Saving... <span class="loading"></span>';
+
+            console.log('[SAVE] Building config object...');
+            // Build config object
+            const config = {
+                dump1090_url: document.getElementById('dump1090_url').value,
+                receiver_lat: parseFloat(document.getElementById('receiver_lat').value),
+                receiver_lon: parseFloat(document.getElementById('receiver_lon').value),
+                hide_receiver: document.getElementById('hide_receiver').checked,
+                show_test_flight: document.getElementById('show_test_flight').checked,
+                http_host: document.getElementById('http_host').value,
+                http_port: parseInt(document.getElementById('http_port').value),
+                websocket_host: document.getElementById('websocket_host').value,
+                websocket_port: parseInt(document.getElementById('websocket_port').value),
+                map_generation: {
+                    enabled: document.getElementById('map_enabled').checked,
+                    min_interval_seconds: parseInt(document.getElementById('map_min_interval').value) || 300,
+                    prefer_closest: document.getElementById('map_prefer_closest').checked,
+                    require_route: document.getElementById('map_require_route').checked,
+                    min_altitude: parseInt(document.getElementById('map_min_altitude').value) || 10000,
+                    max_distance_km: parseInt(document.getElementById('map_max_distance').value) || 500
+                },
+                nearest_airport: document.getElementById('clear_skies_airport').value.toUpperCase().trim() || null,
+                clear_skies: {
+                    enabled: document.getElementById('clear_skies_enabled').checked
+                },
+                database: {
+                    enabled: document.getElementById('db_enabled').checked,
+                    db_path: document.getElementById('db_path').value,
+                    snapshot_interval_seconds: parseInt(document.getElementById('db_snapshot_interval').value) || 5,
+                    cleanup_days: parseInt(document.getElementById('db_cleanup_days').value) || 7
+                }
+            };
+
+            try {
+                console.log('[SAVE] Sending POST request...');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    console.error('[SAVE] Request timeout!');
+                    controller.abort();
+                }, 10000); // 10 second timeout
+                
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                
+                clearTimeout(timeoutId);
+                console.log('[SAVE] Response received, status:', response.status);
+                console.log('[SAVE] Response ok:', response.ok);
+                
+                // Read response as text first (like we do for GET)
+                const text = await response.text();
+                console.log('[SAVE] Response text:', text);
+                
+                let result;
+                try {
+                    result = JSON.parse(text);
+                    console.log('[SAVE] Response parsed:', result);
+                } catch (e) {
+                    console.error('[SAVE] JSON parse error:', e);
+                    throw new Error('Invalid JSON response: ' + e.message);
+                }
+
+                if (response.ok) {
+                    console.log('[SAVE] Success!');
+                    showStatus('Configuration saved successfully! ' + (result.note || ''), 'success');
+                } else {
+                    console.error('[SAVE] Error response:', result);
+                    showStatus('Error: ' + (result.error || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('[SAVE] Exception:', error);
+                console.error('[SAVE] Error name:', error.name);
+                console.error('[SAVE] Error message:', error.message);
+                showStatus('Error saving configuration: ' + error.message, 'error');
+            } finally {
+                console.log('[SAVE] Resetting button state');
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        });
+
+        // Load config when DOM is ready
+        function initConfig() {
+            console.log('initConfig called, readyState:', document.readyState);
+            
+            function tryLoadConfig() {
+                // Verify critical elements exist before proceeding
+                const testElement = document.getElementById('dump1090_url');
+                if (!testElement) {
+                    console.log('Elements not ready yet, retrying...');
+                    setTimeout(tryLoadConfig, 50);
+                    return;
+                }
+                console.log('Elements ready, loading config...');
+                loadConfig();
+            }
+            
+            if (document.readyState === 'loading') {
+                console.log('Waiting for DOMContentLoaded');
+                document.addEventListener('DOMContentLoaded', () => {
+                    console.log('DOMContentLoaded fired');
+                    // Wait a bit more to ensure form is fully rendered
+                    setTimeout(tryLoadConfig, 100);
+                });
+            } else {
+                console.log('DOM already ready, verifying elements...');
+                // DOM says it's ready, but verify elements actually exist
+                setTimeout(tryLoadConfig, 100);
+            }
+        }
+        
+        // Start initialization
+        initConfig();
+    </script>
+</body>
+</html>

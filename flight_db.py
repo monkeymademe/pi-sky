@@ -76,25 +76,6 @@ class FlightDatabase:
                 CREATE INDEX IF NOT EXISTS idx_callsign ON flight_snapshots(callsign)
             ''')
             
-            # Create flight_events table
-            # Stores significant events (new flight detected, route found, etc.)
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS flight_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    icao TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    event_data TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_event_timestamp ON flight_events(timestamp)
-            ''')
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_event_icao ON flight_events(icao)
-            ''')
             
             # Enable WAL mode for better concurrency (allows reads during writes)
             cursor.execute('PRAGMA journal_mode=WAL')
@@ -156,33 +137,6 @@ class FlightDatabase:
                     flight.get('status'),
                     1 if flight.get('unidentified') else 0
                 ))
-            
-            conn.commit()
-            conn.close()
-    
-    def save_event(self, icao, event_type, event_data=None, timestamp=None):
-        """
-        Save a flight event
-        
-        Args:
-            icao: Aircraft ICAO code
-            event_type: Type of event (e.g., 'new_flight', 'route_found', 'aircraft_info_found')
-            event_data: Optional JSON-serializable data
-            timestamp: Optional timestamp (defaults to current time)
-        """
-        if timestamp is None:
-            timestamp = datetime.now().isoformat()
-        
-        event_data_json = json.dumps(event_data) if event_data else None
-        
-        with self.lock:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO flight_events (timestamp, icao, event_type, event_data)
-                VALUES (?, ?, ?, ?)
-            ''', (timestamp, icao, event_type, event_data_json))
             
             conn.commit()
             conn.close()
@@ -395,9 +349,6 @@ class FlightDatabase:
             cursor.execute('SELECT COUNT(*) FROM flight_snapshots WHERE timestamp < ?', (cutoff_str,))
             snapshots_to_delete = cursor.fetchone()[0]
             
-            cursor.execute('SELECT COUNT(*) FROM flight_events WHERE timestamp < ?', (cutoff_str,))
-            events_to_delete = cursor.fetchone()[0]
-            
             # Check new tables
             cursor.execute('SELECT COUNT(*) FROM positions WHERE ts < ?', (cutoff_str,))
             positions_to_delete = cursor.fetchone()[0]
@@ -474,15 +425,6 @@ class FlightDatabase:
             else:
                 snapshots_deleted = 0
             
-            # Delete old events (legacy table)
-            if events_to_delete > 0:
-                cursor.execute('''
-                    DELETE FROM flight_events
-                    WHERE timestamp < ?
-                ''', (cutoff_str,))
-                events_deleted = cursor.rowcount
-            else:
-                events_deleted = 0
             
             conn.commit()
             
@@ -505,11 +447,10 @@ class FlightDatabase:
             print(f"      • Deleted {flights_deleted} flights")
             print(f"      • Deleted {aircraft_deleted} aircraft")
             print(f"      • Deleted {snapshots_deleted} snapshots (legacy)")
-            print(f"      • Deleted {events_deleted} events (legacy)")
             if size_reclaimed_mb > 0:
                 print(f"   💾 Reclaimed {size_reclaimed_mb} MB of disk space ({db_size_before / (1024*1024):.2f} MB → {db_size_after / (1024*1024):.2f} MB)")
             
-            return snapshots_deleted, events_deleted
+            return snapshots_deleted
     
     def get_database_stats(self):
         """
@@ -525,10 +466,6 @@ class FlightDatabase:
             # Count snapshots
             cursor.execute('SELECT COUNT(*) FROM flight_snapshots')
             snapshot_count = cursor.fetchone()[0]
-            
-            # Count events
-            cursor.execute('SELECT COUNT(*) FROM flight_events')
-            event_count = cursor.fetchone()[0]
             
             # Get date range
             cursor.execute('SELECT MIN(timestamp), MAX(timestamp) FROM flight_snapshots')
@@ -547,7 +484,6 @@ class FlightDatabase:
             
             return {
                 'snapshot_count': snapshot_count,
-                'event_count': event_count,
                 'unique_flights': unique_flights,
                 'min_date': min_date,
                 'max_date': max_date,
@@ -611,14 +547,6 @@ class FlightDatabase:
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_flight_ts ON positions(flight_id, ts)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_positions_ts ON positions(ts)')
         
-        # Update flight_events table to support flight_id (keep backward compatibility)
-        # Note: We already have flight_events table, so we just add an index for flight_id if needed
-        # The old events use icao, new ones can use flight_id
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_events_flight_id ON flight_events(
-                CAST(json_extract(event_data, '$.flight_id') AS INTEGER)
-            )
-        ''')
     
     def upsert_aircraft(self, icao, aircraft_info=None):
         """
@@ -844,29 +772,6 @@ class FlightDatabase:
             
             conn.commit()
             conn.close()
-    
-    def log_flight_event(self, flight_id, event_type, event_data=None, aircraft_icao=None):
-        """
-        Log a flight event (uses existing flight_events table)
-        
-        Args:
-            flight_id: ID of the flight (can be None for aircraft-level events)
-            event_type: Type of event (new_flight, callsign_change, gap_detected, etc.)
-            event_data: Optional dict with additional event data
-            aircraft_icao: Optional ICAO if flight_id is None
-        """
-        # Merge flight_id into event_data for storage
-        if event_data is None:
-            event_data = {}
-        if flight_id is not None:
-            event_data['flight_id'] = flight_id
-        
-        # Use existing save_event method
-        self.save_event(
-            icao=aircraft_icao or 'system',
-            event_type=event_type,
-            event_data=event_data
-        )
     
     def get_flights(self, start_time=None, end_time=None, callsign=None, icao=None, active_only=False, limit=None):
         """

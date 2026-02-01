@@ -2,6 +2,7 @@
     "dump1090_url": "http://localhost:8080/data/aircraft.json",
     "receiver_lat": 52.40585,
     "receiver_lon": 13.55214,
+    "nearest_airport": "EDDB",
     "hide_receiver": false,
     "show_test_flight": false,
     "http_host": "0.0.0.0",
@@ -17,17 +18,12 @@
         "max_distance_km": 500
     },
     "clear_skies": {
-        "enabled": true,
-        "threshold_seconds": 1800,
-        "nearest_airport": "EDDB",
-        "airport_lat": null,
-        "airport_lon": null
+        "enabled": true
     },
     "database": {
         "enabled": true,
         "db_path": "flights.db",
         "snapshot_interval_seconds": 5,
-        "save_events": true,
         "cleanup_days": 7
     }
 }
