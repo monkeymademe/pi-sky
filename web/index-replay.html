@@ -743,31 +743,24 @@
         }
         
         .overview-map-loading {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
-            border-radius: 8px;
-            color: white;
-            font-size: 1.1em;
-            backdrop-filter: blur(4px);
+            padding: 20px;
+            color: var(--text-primary);
+            font-size: 1em;
+            margin-top: 10px;
         }
         
         .overview-map-loading .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top-color: white;
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-color);
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         
         @keyframes spin {
@@ -775,13 +768,14 @@
         }
         
         .overview-map-loading .loading-text {
-            font-weight: 600;
+            font-weight: 500;
             margin-bottom: 5px;
+            color: var(--text-secondary);
         }
         
         .overview-map-loading .loading-progress {
-            font-size: 0.9em;
-            opacity: 0.9;
+            font-size: 0.85em;
+            color: var(--text-muted);
         }
         
         .map-loading {
@@ -992,11 +986,11 @@
             <h2>All Flights Overview</h2>
             <div class="overview-map-container">
                 <div class="overview-map" id="overviewMap"></div>
-                <div class="overview-map-loading" id="overviewMapLoading">
-                    <div class="loading-spinner"></div>
-                    <div class="loading-text">Loading overview map...</div>
-                    <div class="loading-progress" id="overviewMapProgress"></div>
-                </div>
+            </div>
+            <div class="overview-map-loading" id="overviewMapLoading">
+                <div class="loading-spinner"></div>
+                <div class="loading-text">Loading overview map...</div>
+                <div class="loading-progress" id="overviewMapProgress"></div>
             </div>
         </div>
                 
@@ -2284,8 +2278,25 @@
                     maxZoom: 18
                 }).addTo(map);
                 
-                // Set initial view
-                map.setView([52.40585, 13.55214], 6);
+                // Get receiver location from config API
+                let receiverLat = 52.40585; // Default fallback
+                let receiverLon = 13.55214; // Default fallback
+                
+                try {
+                    const configResponse = await fetch('/api/config');
+                    if (configResponse.ok) {
+                        const config = await configResponse.json();
+                        if (config.receiver_lat && config.receiver_lon) {
+                            receiverLat = config.receiver_lat;
+                            receiverLon = config.receiver_lon;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch receiver location from config, using defaults');
+                }
+                
+                // Set initial view centered on receiver location with zoom level 10
+                map.setView([receiverLat, receiverLon], 10);
                 
                 if (progressText) progressText.textContent = 'Fetching flight positions...';
                 
@@ -2355,24 +2366,11 @@
                     }
                 }
                 
-                // Fit map to show all flights
-                if (progressText) progressText.textContent = 'Fitting map to show all flights...';
+                // Center map on receiver location after flights are loaded
+                if (progressText) progressText.textContent = 'Centering on receiver location...';
                 
-                if (allBounds.length > 0) {
-                    // Combine all bounds into a single bounds object
-                    let combinedBounds = allBounds[0];
-                    for (let i = 1; i < allBounds.length; i++) {
-                        combinedBounds = combinedBounds.extend(allBounds[i]);
-                    }
-                    
-                    map.fitBounds(combinedBounds, {
-                        padding: [50, 50],
-                        maxZoom: 10
-                    });
-                } else {
-                    // Default view if no flights with positions
-                    map.setView([52.40585, 13.55214], 6); // Default to receiver location
-                }
+                // Focus on receiver location with zoom level 10
+                map.setView([receiverLat, receiverLon], 10);
                 
                 // Hide loading overlay with a brief delay to show final state
                 setTimeout(() => {
