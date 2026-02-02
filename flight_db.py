@@ -23,6 +23,28 @@ class FlightDatabase:
         self.db_path = db_path
         self.lock = threading.Lock()
         self._init_database()
+        self._detect_column_names()
+    
+    def _detect_column_names(self):
+        """Detect which column names are in use (for backward compatibility)"""
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(flights)")
+            columns = [row[1] for row in cursor.fetchall()]
+            conn.close()
+            
+            # Check which naming convention is in use
+            if 'first_seen' in columns and 'last_seen' in columns:
+                self.first_seen_col = 'first_seen'
+                self.last_seen_col = 'last_seen'
+            elif 'start_time' in columns and 'end_time' in columns:
+                self.first_seen_col = 'start_time'
+                self.last_seen_col = 'end_time'
+            else:
+                # Default to new names (for new databases)
+                self.first_seen_col = 'first_seen'
+                self.last_seen_col = 'last_seen'
     
     def _init_database(self):
         """Initialize database schema"""
@@ -354,10 +376,10 @@ class FlightDatabase:
             positions_to_delete = cursor.fetchone()[0]
             
             # Find flights that ended before cutoff (or started before cutoff if still active but old)
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT COUNT(*) FROM flights 
-                WHERE (end_time IS NOT NULL AND end_time < ?) 
-                   OR (end_time IS NULL AND start_time < ?)
+                WHERE ({self.last_seen_col} IS NOT NULL AND {self.last_seen_col} < ?) 
+                   OR ({self.last_seen_col} IS NULL AND {self.first_seen_col} < ?)
             ''', (cutoff_str, cutoff_str))
             flights_to_delete = cursor.fetchone()[0]
             
@@ -369,7 +391,7 @@ class FlightDatabase:
             ''', (cutoff_str,))
             aircraft_to_delete = cursor.fetchone()[0]
             
-            total_to_delete = snapshots_to_delete + events_to_delete + positions_to_delete + flights_to_delete + aircraft_to_delete
+            total_to_delete = snapshots_to_delete + positions_to_delete + flights_to_delete + aircraft_to_delete
             
             if total_to_delete == 0:
                 conn.close()
@@ -393,10 +415,10 @@ class FlightDatabase:
             # Delete old flights (positions already deleted, so safe to delete flights)
             if flights_to_delete > 0:
                 # Delete flights that ended before cutoff, or started before cutoff if still active
-                cursor.execute('''
+                cursor.execute(f'''
                     DELETE FROM flights 
-                    WHERE (end_time IS NOT NULL AND end_time < ?) 
-                       OR (end_time IS NULL AND start_time < ?)
+                    WHERE ({self.last_seen_col} IS NOT NULL AND {self.last_seen_col} < ?) 
+                       OR ({self.last_seen_col} IS NULL AND {self.first_seen_col} < ?)
                 ''', (cutoff_str, cutoff_str))
                 flights_deleted = cursor.rowcount
                 print(f"   Deleted {flights_deleted} old flights")
@@ -518,14 +540,14 @@ class FlightDatabase:
                 destination_country TEXT,
                 airline_code TEXT,
                 airline_name TEXT,
-                start_time TEXT NOT NULL,
-                end_time TEXT,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT,
                 status TEXT
             )
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_aircraft ON flights(aircraft_icao)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_callsign ON flights(callsign)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_time ON flights(start_time, end_time)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_time ON flights(first_seen, last_seen)')
         
         # Positions table - time-series data for each flight
         cursor.execute('''
@@ -603,10 +625,10 @@ class FlightDatabase:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT * FROM flights 
-                WHERE aircraft_icao = ? AND end_time IS NULL
-                ORDER BY start_time DESC
+                WHERE aircraft_icao = ? AND {self.last_seen_col} IS NULL
+                ORDER BY {self.first_seen_col} DESC
                 LIMIT 1
             ''', (icao,))
             
@@ -616,6 +638,66 @@ class FlightDatabase:
             if row:
                 return dict(row)
             return None
+    
+    def get_recently_ended_flight(self, icao, max_gap_minutes=5):
+        """
+        Get a recently ended flight that might be resumable
+        
+        Args:
+            icao: ICAO24 hex code
+            max_gap_minutes: Maximum gap in minutes since end_time to consider resumable
+            
+        Returns:
+            dict with flight info or None
+        """
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Get the most recently ended flight for this ICAO
+            # Only consider flights ended within max_gap_minutes
+            cursor.execute(f'''
+                SELECT * FROM flights 
+                WHERE aircraft_icao = ? 
+                  AND {self.last_seen_col} IS NOT NULL
+                  AND (julianday('now') - julianday({self.last_seen_col})) * 24 * 60 <= ?
+                ORDER BY {self.last_seen_col} DESC
+                LIMIT 1
+            ''', (icao, max_gap_minutes))
+            
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row:
+                return dict(row)
+            return None
+    
+    def resume_flight(self, flight_id):
+        """
+        Resume a previously ended flight by clearing end_time
+        
+        Args:
+            flight_id: ID of the flight to resume
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute(f'''
+                UPDATE flights 
+                SET {self.last_seen_col} = NULL, status = 'active'
+                WHERE id = ?
+            ''', (flight_id,))
+            
+            conn.commit()
+            success = cursor.rowcount > 0
+            conn.close()
+            
+            return success
     
     def start_flight(self, icao, callsign, flight_info=None):
         """
@@ -636,12 +718,12 @@ class FlightDatabase:
             
             info = flight_info or {}
             
-            cursor.execute('''
+            cursor.execute(f'''
                 INSERT INTO flights (
                     aircraft_icao, callsign, origin, destination,
                     origin_country, destination_country,
                     airline_code, airline_name,
-                    start_time, status
+                    {self.first_seen_col}, status
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 icao,
@@ -675,9 +757,9 @@ class FlightDatabase:
             cursor = conn.cursor()
             now = datetime.now().isoformat()
             
-            cursor.execute('''
+            cursor.execute(f'''
                 UPDATE flights 
-                SET end_time = ?, status = ?
+                SET {self.last_seen_col} = ?, status = ?
                 WHERE id = ?
             ''', (now, status, flight_id))
             
@@ -773,16 +855,16 @@ class FlightDatabase:
             conn.commit()
             conn.close()
     
-    def get_flights(self, start_time=None, end_time=None, callsign=None, icao=None, active_only=False, limit=None):
+    def get_flights(self, first_seen_start=None, first_seen_end=None, callsign=None, icao=None, active_only=False, limit=None):
         """
         Get flights matching criteria
         
         Args:
-            start_time: Optional start time filter
-            end_time: Optional end time filter
+            first_seen_start: Optional first seen time filter (start of range)
+            first_seen_end: Optional first seen time filter (end of range)
             callsign: Optional callsign filter
             icao: Optional aircraft ICAO filter
-            active_only: If True, only return active flights (end_time IS NULL)
+            active_only: If True, only return active flights (last_seen IS NULL)
             limit: Optional limit on number of results
             
         Returns:
@@ -807,13 +889,21 @@ class FlightDatabase:
             params = []
             
             if active_only:
-                query += ' AND f.end_time IS NULL'
-            if start_time:
-                query += ' AND f.start_time >= ?'
-                params.append(start_time)
-            if end_time:
-                query += ' AND f.end_time <= ?'
-                params.append(end_time)
+                query += f' AND f.{self.last_seen_col} IS NULL'
+            # Time range filtering: find flights that were FIRST SEEN within the specified time range
+            # This matches the UI expectation - show flights first seen on the selected date(s)
+            if first_seen_start and first_seen_end:
+                query += f' AND f.{self.first_seen_col} >= ? AND f.{self.first_seen_col} <= ?'
+                params.append(first_seen_start)  # Flight must be first seen on or after range start
+                params.append(first_seen_end)  # Flight must be first seen on or before range end
+            elif first_seen_start:
+                # Only first_seen_start specified: flights first seen after this time
+                query += f' AND f.{self.first_seen_col} >= ?'
+                params.append(first_seen_start)
+            elif first_seen_end:
+                # Only first_seen_end specified: flights last seen before this time (or haven't ended)
+                query += f' AND (f.{self.last_seen_col} <= ? OR f.{self.last_seen_col} IS NULL)'
+                params.append(first_seen_end)
             if callsign:
                 query += ' AND f.callsign = ?'
                 params.append(callsign)
@@ -821,7 +911,7 @@ class FlightDatabase:
                 query += ' AND f.aircraft_icao = ?'
                 params.append(icao)
             
-            query += ' ORDER BY f.start_time DESC'
+            query += f' ORDER BY f.{self.first_seen_col} DESC'
             
             if limit:
                 query += ' LIMIT ?'
@@ -829,7 +919,17 @@ class FlightDatabase:
             
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            result = [dict(row) for row in rows]
+            
+            # Map column names to expected field names for API compatibility
+            result = []
+            for row in rows:
+                flight_dict = dict(row)
+                # Map old column names to new field names in response
+                if self.first_seen_col == 'start_time' and 'start_time' in flight_dict:
+                    flight_dict['first_seen'] = flight_dict.pop('start_time')
+                if self.last_seen_col == 'end_time' and 'end_time' in flight_dict:
+                    flight_dict['last_seen'] = flight_dict.pop('end_time')
+                result.append(flight_dict)
             return result
         except sqlite3.OperationalError as e:
             print(f"      ✗ Database error in get_flights(): {e}")
@@ -872,7 +972,13 @@ class FlightDatabase:
             conn.close()
             
             if row:
-                return dict(row)
+                flight_dict = dict(row)
+                # Map column names to expected field names for API compatibility
+                if self.first_seen_col == 'start_time' and 'start_time' in flight_dict:
+                    flight_dict['first_seen'] = flight_dict.pop('start_time')
+                if self.last_seen_col == 'end_time' and 'end_time' in flight_dict:
+                    flight_dict['last_seen'] = flight_dict.pop('end_time')
+                return flight_dict
             return None
         except Exception as e:
             print(f"      ✗ Error in get_flight(): {e}")

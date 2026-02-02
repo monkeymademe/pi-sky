@@ -742,6 +742,78 @@
             height: 100%;
         }
         
+        .map-filter-controls {
+            background: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .filter-row {
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            min-width: 150px;
+        }
+        
+        .filter-group label {
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+        
+        .filter-input {
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            font-size: 1em;
+            transition: border-color 0.2s ease;
+        }
+        
+        .filter-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+        
+        .update-btn {
+            padding: 10px 24px;
+            background: var(--accent-gradient);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            white-space: nowrap;
+        }
+        
+        .update-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .update-btn:active {
+            transform: translateY(0);
+        }
+        
+        .update-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .overview-map-loading {
             display: flex;
             flex-direction: column;
@@ -983,13 +1055,26 @@
         
         <!-- Overview map showing all flights -->
         <div class="overview-map-section">
-            <h2>All Flights Overview</h2>
+            <h2>All Flights Map</h2>
             <div class="overview-map-container">
                 <div class="overview-map" id="overviewMap"></div>
             </div>
-            <div class="overview-map-loading" id="overviewMapLoading">
+            <div class="map-filter-controls" id="mapFilterControls">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label for="filterStartDate">Start Date:</label>
+                        <input type="date" id="filterStartDate" class="filter-input">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filterEndDate">End Date:</label>
+                        <input type="date" id="filterEndDate" class="filter-input">
+                    </div>
+                    <button id="updateMapBtn" class="update-btn">Update Map</button>
+                </div>
+            </div>
+            <div class="overview-map-loading" id="overviewMapLoading" style="display: none;">
                 <div class="loading-spinner"></div>
-                <div class="loading-text">Loading overview map...</div>
+                <div class="loading-text">Loading flights...</div>
                 <div class="loading-progress" id="overviewMapProgress"></div>
             </div>
         </div>
@@ -1140,7 +1225,7 @@
                 
                 // Use absolute URL to avoid any path issues - fetch all flights from last 7 days
                 // Pass a very high limit to get all flights (server defaults to 10 if no limit)
-                const apiUrl = `/api/flights?start_time=${encodeURIComponent(startTime)}&limit=10000`;
+                const apiUrl = `/api/flights?first_seen_start=${encodeURIComponent(startTime)}&limit=10000`;
                 console.log('📡 Fetching flights from:', apiUrl);
                 console.log('📅 Date range: Last 7 days (from', startTime, 'to now)');
                 console.log('📡 Current page URL:', window.location.href);
@@ -1241,7 +1326,7 @@
                         console.log('✅ All rendering completed');
                         
                         // Load overview map after flights are rendered
-                        setTimeout(loadOverviewMap, 500);
+                        setTimeout(initOverviewMap, 500);
                     } catch (renderError) {
                         console.error('❌ Error in renderFlights():', renderError);
                         container.innerHTML = `
@@ -1302,7 +1387,7 @@
             flights.forEach(flight => {
                 // Extract date directly from ISO string to avoid timezone conversion issues
                 // This ensures flights are grouped by their actual date, not UTC-converted date
-                const startTimeStr = flight.start_time || '';
+                const startTimeStr = flight.first_seen || '';
                 let dayKey;
                 
                 if (startTimeStr.includes('T')) {
@@ -1313,14 +1398,14 @@
                     dayKey = startTimeStr.substring(0, 10);
                 } else {
                     // Last resort: use Date object (may have timezone issues)
-                    const startDate = new Date(flight.start_time);
+                    const startDate = new Date(flight.first_seen);
                     dayKey = startDate.toISOString().split('T')[0];
                 }
                 
                 // Normalize dayKey to ensure consistent format (YYYY-MM-DD)
                 // This prevents duplicate groups from slight format variations
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) {
-                    console.warn('Unexpected date format:', dayKey, 'from flight:', flight.start_time);
+                    console.warn('Unexpected date format:', dayKey, 'from flight:', flight.first_seen);
                     // Try to fix it
                     const match = dayKey.match(/(\d{4})-(\d{2})-(\d{2})/);
                     if (match) {
@@ -1486,13 +1571,13 @@
                                                 </div>
                                             ` : ''}
                                             <div class="flight-info-item">
-                                                <label>Started</label>
-                                                <value>${formatDateTime(flight.start_time)}</value>
+                                                <label>First Seen</label>
+                                                <value>${formatDateTime(flight.first_seen)}</value>
                                             </div>
-                                            ${flight.end_time ? `
+                                            ${flight.last_seen ? `
                                                 <div class="flight-info-item">
-                                                    <label>Ended</label>
-                                                    <value>${formatDateTime(flight.end_time)}</value>
+                                                    <label>Last Seen</label>
+                                                    <value>${formatDateTime(flight.last_seen)}</value>
                                                 </div>
                                             ` : ''}
                                         </div>
@@ -1601,13 +1686,13 @@
                                 </div>
                             ` : ''}
                             <div class="flight-detail-item">
-                                <label>Start Time</label>
-                                <value>${formatDateTime(flight.start_time)}</value>
+                                <label>First Seen</label>
+                                <value>${formatDateTime(flight.first_seen)}</value>
                             </div>
-                            ${flight.end_time ? `
+                            ${flight.last_seen ? `
                                 <div class="flight-detail-item">
-                                    <label>End Time</label>
-                                    <value>${formatDateTime(flight.end_time)}</value>
+                                    <label>Last Seen</label>
+                                    <value>${formatDateTime(flight.last_seen)}</value>
                                 </div>
                             ` : ''}
                             ${flight.aircraft && (flight.aircraft.model || flight.aircraft.type || flight.aircraft.registration) ? `
@@ -2243,35 +2328,21 @@
         });
         
         // Load overview map with all flights
-        async function loadOverviewMap() {
+        // Global map variable
+        let overviewMap = null;
+        let mapPolylines = []; // Store polylines for removal
+        
+        // Initialize map (loads map but no flights)
+        async function initOverviewMap() {
             const mapContainer = document.getElementById('overviewMap');
-            const loadingDiv = document.getElementById('overviewMapLoading');
             
-            if (!mapContainer || !loadingDiv) {
+            if (!mapContainer) {
                 return;
             }
             
             try {
-                // Wait for flights to be loaded
-                if (flights.length === 0) {
-                    const loadingText = loadingDiv.querySelector('.loading-text');
-                    const progressText = document.getElementById('overviewMapProgress');
-                    if (loadingText) loadingText.textContent = 'Waiting for flights to load...';
-                    if (progressText) progressText.textContent = '';
-                    return;
-                }
-                
-                const loadingText = loadingDiv.querySelector('.loading-text');
-                const progressText = document.getElementById('overviewMapProgress');
-                const totalFlights = flights.length;
-                
-                if (loadingText) loadingText.textContent = `Loading ${totalFlights} flights...`;
-                if (progressText) progressText.textContent = 'Initializing map...';
-                
-                // Initialize map (show it immediately)
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                const map = L.map('overviewMap', {
+                // Initialize map immediately
+                overviewMap = L.map('overviewMap', {
                     zoomControl: true,
                     attributionControl: true
                 });
@@ -2280,7 +2351,7 @@
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap',
                     maxZoom: 18
-                }).addTo(map);
+                }).addTo(overviewMap);
                 
                 // Get receiver location from config API
                 let receiverLat = 52.40585; // Default fallback
@@ -2300,9 +2371,119 @@
                 }
                 
                 // Set initial view centered on receiver location with zoom level 10
-                map.setView([receiverLat, receiverLon], 10);
+                overviewMap.setView([receiverLat, receiverLon], 10);
                 
-                if (progressText) progressText.textContent = 'Fetching flight positions...';
+                // Set default date range (last 7 days)
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(endDate.getDate() - 7);
+                
+                const startDateInput = document.getElementById('filterStartDate');
+                const endDateInput = document.getElementById('filterEndDate');
+                
+                if (startDateInput) {
+                    startDateInput.value = startDate.toISOString().split('T')[0];
+                }
+                if (endDateInput) {
+                    endDateInput.value = endDate.toISOString().split('T')[0];
+                }
+                
+                // Setup update button handler
+                const updateBtn = document.getElementById('updateMapBtn');
+                if (updateBtn) {
+                    updateBtn.addEventListener('click', loadFlightsOnMap);
+                }
+                
+                console.log('✅ Overview map initialized (no flights loaded yet)');
+                
+            } catch (error) {
+                console.error('Error initializing overview map:', error);
+            }
+        }
+        
+        // Load flights on map based on filter criteria
+        async function loadFlightsOnMap() {
+            if (!overviewMap) {
+                console.error('Map not initialized');
+                return;
+            }
+            
+            const loadingDiv = document.getElementById('overviewMapLoading');
+            const updateBtn = document.getElementById('updateMapBtn');
+            
+            if (!loadingDiv) {
+                return;
+            }
+            
+            // Disable update button
+            if (updateBtn) {
+                updateBtn.disabled = true;
+            }
+            
+            // Show loading
+            loadingDiv.style.display = 'flex';
+            const loadingText = loadingDiv.querySelector('.loading-text');
+            const progressText = document.getElementById('overviewMapProgress');
+            
+            try {
+                // Clear existing polylines
+                mapPolylines.forEach(polyline => {
+                    if (overviewMap.hasLayer(polyline)) {
+                        overviewMap.removeLayer(polyline);
+                    }
+                });
+                mapPolylines = [];
+                
+                // Get date filter values
+                const startDateInput = document.getElementById('filterStartDate');
+                const endDateInput = document.getElementById('filterEndDate');
+                
+                let startTime = null;
+                let endTime = null;
+                
+                if (startDateInput && startDateInput.value) {
+                    const startDate = new Date(startDateInput.value);
+                    startDate.setHours(0, 0, 0, 0);
+                    startTime = startDate.toISOString();
+                }
+                
+                if (endDateInput && endDateInput.value) {
+                    const endDate = new Date(endDateInput.value);
+                    endDate.setHours(23, 59, 59, 999);
+                    endTime = endDate.toISOString();
+                }
+                
+                // Build API URL with filters
+                let apiUrl = '/api/flights?limit=10000';
+                if (startTime) {
+                    apiUrl += `&first_seen_start=${encodeURIComponent(startTime)}`;
+                }
+                if (endTime) {
+                    apiUrl += `&first_seen_end=${encodeURIComponent(endTime)}`;
+                }
+                
+                if (loadingText) loadingText.textContent = 'Fetching flights...';
+                if (progressText) progressText.textContent = '';
+                
+                // Fetch filtered flights
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                const filteredFlights = data.flights || [];
+                
+                if (loadingText) loadingText.textContent = `Loading ${filteredFlights.length} flights...`;
+                
+                if (filteredFlights.length === 0) {
+                    if (progressText) progressText.textContent = 'No flights found for selected date range';
+                    setTimeout(() => {
+                        loadingDiv.style.display = 'none';
+                        if (updateBtn) updateBtn.disabled = false;
+                    }, 2000);
+                    return;
+                }
                 
                 // Color palette for flight paths
                 const colors = [
@@ -2311,13 +2492,13 @@
                     '#007bff', '#6610f2', '#6f42c1', '#e83e8c', '#dc3545'
                 ];
                 
-                let allBounds = [];
                 let loadedCount = 0;
                 let drawnCount = 0;
+                const totalFlights = filteredFlights.length;
                 
-                // Load positions for all flights
-                for (let i = 0; i < flights.length; i++) {
-                    const flight = flights[i];
+                // Load positions for filtered flights
+                for (let i = 0; i < filteredFlights.length; i++) {
+                    const flight = filteredFlights[i];
                     const color = colors[i % colors.length];
                     
                     try {
@@ -2327,11 +2508,11 @@
                             progressText.textContent = `Loading flight ${loadedCount}/${totalFlights}...`;
                         }
                         
-                        const response = await fetch(`/api/flights/${flight.id}/positions`);
-                        if (!response.ok) continue;
+                        const posResponse = await fetch(`/api/flights/${flight.id}/positions`);
+                        if (!posResponse.ok) continue;
                         
-                        const data = await response.json();
-                        const positions = data.positions || [];
+                        const posData = await posResponse.json();
+                        const positions = posData.positions || [];
                         
                         // Filter valid positions
                         const validPositions = positions.filter(p => {
@@ -2351,16 +2532,12 @@
                                 color: color,
                                 weight: 2,
                                 opacity: 0.6
-                            }).addTo(map);
+                            }).addTo(overviewMap);
                             
-                            // Add to bounds
-                            if (path.length > 0) {
-                                allBounds.push(polyline.getBounds());
-                            }
-                            
+                            mapPolylines.push(polyline);
                             drawnCount++;
                             
-                            // Update progress more frequently
+                            // Update progress
                             if (progressText) {
                                 progressText.textContent = `Drawn ${drawnCount} flight${drawnCount !== 1 ? 's' : ''} (${loadedCount}/${totalFlights} loaded)`;
                             }
@@ -2370,25 +2547,40 @@
                     }
                 }
                 
-                // Center map on receiver location after flights are loaded
+                // Get receiver location for centering
+                let receiverLat = 52.40585;
+                let receiverLon = 13.55214;
+                
+                try {
+                    const configResponse = await fetch('/api/config');
+                    if (configResponse.ok) {
+                        const config = await configResponse.json();
+                        if (config.receiver_lat && config.receiver_lon) {
+                            receiverLat = config.receiver_lat;
+                            receiverLon = config.receiver_lon;
+                        }
+                    }
+                } catch (e) {
+                    // Use defaults
+                }
+                
+                // Center map on receiver location
                 if (progressText) progressText.textContent = 'Centering on receiver location...';
+                overviewMap.setView([receiverLat, receiverLon], 10);
                 
-                // Focus on receiver location with zoom level 10
-                map.setView([receiverLat, receiverLon], 10);
-                
-                // Hide loading overlay with a brief delay to show final state
+                // Hide loading overlay
                 setTimeout(() => {
                     loadingDiv.style.display = 'none';
+                    if (updateBtn) updateBtn.disabled = false;
                 }, 500);
                 
-                console.log(`✅ Overview map loaded with ${drawnCount} flights drawn`);
+                console.log(`✅ Map updated with ${drawnCount} flights drawn`);
                 
             } catch (error) {
-                console.error('Error loading overview map:', error);
-                const loadingText = loadingDiv.querySelector('.loading-text');
-                const progressText = document.getElementById('overviewMapProgress');
-                if (loadingText) loadingText.textContent = 'Error loading overview map';
+                console.error('Error loading flights on map:', error);
+                if (loadingText) loadingText.textContent = 'Error loading flights';
                 if (progressText) progressText.textContent = error.message || 'Unknown error';
+                if (updateBtn) updateBtn.disabled = false;
             }
         }
         

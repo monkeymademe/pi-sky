@@ -778,7 +778,8 @@ def process_aircraft_data(aircraft_data):
                 'airline_name': airline_info.get('name') if airline_info else None,
                 'aircraft_model': None,
                 'aircraft_type': None,
-                'aircraft_registration': None
+                'aircraft_registration': None,
+                'last_distance': distance  # Store initial distance for adaptive timeout
             }
             
             # Lookup route information (only for new flights, requires callsign)
@@ -864,6 +865,9 @@ def process_aircraft_data(aircraft_data):
         else:
             flight_memory[icao]['missed_cycles'] = 0  # Reset counter
             flight_memory[icao]['seen_cycles'] = flight_memory[icao].get('seen_cycles', 0) + 1
+            # Store last known distance for adaptive timeout
+            if distance is not None:
+                flight_memory[icao]['last_distance'] = distance
             
             # Update callsign if it changed
             if callsign and callsign != flight_memory[icao].get('callsign'):
@@ -998,18 +1002,33 @@ def process_aircraft_data(aircraft_data):
                 active_flight = flight_db.get_active_flight(icao)
                 
                 if not active_flight:
-                    # Start new flight
-                    flight_info = {
-                        'origin': enriched.get('origin'),
-                        'destination': enriched.get('destination'),
-                        'origin_country': enriched.get('origin_country'),
-                        'destination_country': enriched.get('destination_country'),
-                        'airline_code': enriched.get('airline_code'),
-                        'airline_name': enriched.get('airline_name')
-                    }
-                    flight_id = flight_db.start_flight(icao, callsign, flight_info)
+                    # Check if there's a recently ended flight we can resume
+                    # This handles cases where signal was temporarily lost
+                    recently_ended = flight_db.get_recently_ended_flight(icao, max_gap_minutes=5)
+                    
+                    if recently_ended:
+                        # Resume the recently ended flight
+                        flight_id = recently_ended['id']
+                        flight_db.resume_flight(flight_id)
+                        # Update flight_memory with the flight_id so we can track it
+                        flight_memory[icao]['flight_id'] = flight_id
+                        print(f"🔄 Resumed flight {flight_id} for {icao} ({callsign or 'N/A'}) after temporary signal loss")
+                    else:
+                        # Start new flight
+                        flight_info = {
+                            'origin': enriched.get('origin'),
+                            'destination': enriched.get('destination'),
+                            'origin_country': enriched.get('origin_country'),
+                            'destination_country': enriched.get('destination_country'),
+                            'airline_code': enriched.get('airline_code'),
+                            'airline_name': enriched.get('airline_name')
+                        }
+                        flight_id = flight_db.start_flight(icao, callsign, flight_info)
+                        flight_memory[icao]['flight_id'] = flight_id
                 else:
                     flight_id = active_flight['id']
+                    # Ensure flight_id is stored in memory for tracking
+                    flight_memory[icao]['flight_id'] = flight_id
                     active_callsign = active_flight.get('callsign')
                     
                     # Check if callsign changed (indicates new flight)
@@ -1042,6 +1061,7 @@ def process_aircraft_data(aircraft_data):
                             'airline_name': enriched.get('airline_name')
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
+                        flight_memory[icao]['flight_id'] = flight_id
                     else:
                         # Update flight info if we learned new details (including callsign if it was missing)
                         mem = flight_memory.get(icao, {})
@@ -1178,10 +1198,41 @@ def process_aircraft_data(aircraft_data):
         if icao not in current_icaos and icao != test_icao_exception:
             flight_memory[icao]['missed_cycles'] += 1
     
-    # Remove flights that have been missing for 10 cycles (except dummy flight if enabled)
-    flights_to_remove = [icao for icao, info in flight_memory.items() 
-                       if info['missed_cycles'] >= 10 and icao != test_icao_exception]
+    # Remove flights that have been missing for too long
+    # Adaptive timeout based on distance:
+    # - Flights < 50km from receiver: 120 seconds (2 minutes) - likely landing, may have brief signal loss
+    # - Flights 50-100km: 90 seconds (1.5 minutes)
+    # - Flights > 100km: 60 seconds (1 minute) - standard timeout
+    flights_to_remove = []
+    for icao, info in flight_memory.items():
+        if icao == test_icao_exception:
+            continue
+        
+        missed = info.get('missed_cycles', 0)
+        last_distance = info.get('last_distance')
+        
+        # Determine timeout threshold based on last known distance
+        if last_distance is not None:
+            if last_distance < 50:
+                threshold = 120  # 2 minutes for flights close to receiver
+            elif last_distance < 100:
+                threshold = 90   # 1.5 minutes for medium distance
+            else:
+                threshold = 60   # 1 minute for distant flights
+        else:
+            threshold = 60  # Default if no distance info
+        
+        if missed >= threshold:
+            flights_to_remove.append(icao)
     for icao in flights_to_remove:
+        # Mark flight as ended in database before removing from memory
+        flight_info = flight_memory[icao]
+        flight_id = flight_info.get('flight_id')
+        if flight_id and flight_db:
+            try:
+                flight_db.end_flight(flight_id, 'lost_track')
+            except Exception as e:
+                print(f"⚠️  Error ending flight {flight_id} for {icao}: {e}")
         del flight_memory[icao]
     
     # Calculate statistics
@@ -2098,8 +2149,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     'aircraft_icao': flight.get('aircraft_icao'),
                     'origin': flight.get('origin'),
                     'destination': flight.get('destination'),
-                    'start_time': flight.get('start_time'),
-                    'end_time': flight.get('end_time'),
+                    'first_seen': flight.get('first_seen'),
+                    'last_seen': flight.get('last_seen'),
                     'status': flight.get('status'),
                     'positions': positions,
                     'count': len(positions)
@@ -2153,8 +2204,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     'destination_country': flight.get('destination_country'),
                     'airline_code': flight.get('airline_code'),
                     'airline_name': flight.get('airline_name'),
-                    'start_time': flight.get('start_time'),
-                    'end_time': flight.get('end_time'),
+                    'first_seen': flight.get('first_seen'),
+                    'last_seen': flight.get('last_seen'),
                     'status': flight.get('status'),
                     'position_count': position_count
                 }
@@ -2167,8 +2218,9 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             # Route: /api/flights (list flights)
             else:
                 print(f"   ✓✓✓ Handling list flights route (no ID in path)")
-                start_time = params.get('start_time', [None])[0]
-                end_time = params.get('end_time', [None])[0]
+                # Accept both old (start_time/end_time) and new (first_seen_start/first_seen_end) parameter names
+                start_time = params.get('start_time', [None])[0] or params.get('first_seen_start', [None])[0]
+                end_time = params.get('end_time', [None])[0] or params.get('first_seen_end', [None])[0]
                 callsign = params.get('callsign', [None])[0]
                 icao = params.get('icao', [None])[0]
                 active_only = params.get('active_only', ['false'])[0].lower() == 'true'
@@ -2188,8 +2240,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                 db_start = time.time()
                 try:
                     flights = flight_db.get_flights(
-                        start_time=start_time,
-                        end_time=end_time,
+                        first_seen_start=start_time,
+                        first_seen_end=end_time,
                         callsign=callsign,
                         icao=icao,
                         active_only=active_only,
@@ -2251,8 +2303,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'airline_code': airline_code,
                         'airline_name': flight.get('airline_name'),
                         'airline_logo': airline_logo,
-                        'start_time': flight.get('start_time'),
-                        'end_time': flight.get('end_time'),
+                        'first_seen': flight.get('first_seen'),
+                        'last_seen': flight.get('last_seen'),
                         'status': flight.get('status'),
                         'position_count': position_count
                     }
@@ -2343,8 +2395,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                             'callsign': flight.get('callsign'),
                             'origin': flight.get('origin'),
                             'destination': flight.get('destination'),
-                            'start_time': flight.get('start_time'),
-                            'end_time': flight.get('end_time'),
+                            'first_seen': flight.get('first_seen'),
+                            'last_seen': flight.get('last_seen'),
                             'status': flight.get('status')
                         }
                         flight_list.append(flight_data)
