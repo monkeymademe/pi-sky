@@ -283,12 +283,15 @@ def get_current_position_adsblol(icao):
         print(f"[{timestamp}] API EXCEPTION: {icao} - {str(e)}")
     return None
 
-def get_aircraft_photos_jetapi(registration):
+def get_aircraft_photos_jetapi(registration, thumbnail_width=400):
     """
     Get aircraft photos from Wikimedia Commons (free, no API key required)
     
     Args:
         registration: Aircraft registration/tail number (e.g., 'D-AIUL', 'N12345')
+        thumbnail_width: Desired thumbnail width in pixels (default: 400)
+                         Common sizes: 200, 400, 640, 800, 1024, 1200
+                         Use 0 or None for full-size image
     
     Returns:
         dict with aircraft photos and details or None
@@ -336,8 +339,11 @@ def get_aircraft_photos_jetapi(registration):
             'titles': '|'.join(file_titles),
             'prop': 'imageinfo',
             'iiprop': 'url|thumburl|extmetadata',
-            'iiurlwidth': 400  # Thumbnail width
         }
+        
+        # Add thumbnail width parameter if specified (0 or None = full size)
+        if thumbnail_width and thumbnail_width > 0:
+            image_params['iiurlwidth'] = thumbnail_width
         
         image_response = requests.get(search_url, params=image_params, headers=headers, timeout=3)
         if image_response.status_code != 200:
@@ -355,7 +361,14 @@ def get_aircraft_photos_jetapi(registration):
             imageinfo = page_info.get('imageinfo', [])
             if imageinfo:
                 img_info = imageinfo[0]
-                photo_url = img_info.get('url') or img_info.get('thumburl')
+                # Get thumbnail if requested, otherwise full-size URL
+                if thumbnail_width and thumbnail_width > 0:
+                    photo_url = img_info.get('thumburl') or img_info.get('url')
+                else:
+                    photo_url = img_info.get('url') or img_info.get('thumburl')
+                
+                full_size_url = img_info.get('url')  # Always get full-size URL for reference
+                
                 if photo_url:
                     # Extract metadata if available
                     extmetadata = img_info.get('extmetadata', {})
@@ -378,10 +391,12 @@ def get_aircraft_photos_jetapi(registration):
                             date_value = extmetadata['DateTime'].get('value', '')
                     
                     photos.append({
-                        'url': photo_url,
+                        'url': photo_url,  # Thumbnail or full-size depending on thumbnail_width
+                        'full_size': full_size_url,  # Always include full-size URL
                         'thumbnail': img_info.get('thumburl') or photo_url,
                         'photographer': photographer,
-                        'date': date_value
+                        'date': date_value,
+                        'thumbnail_width': thumbnail_width if thumbnail_width and thumbnail_width > 0 else None
                     })
         
         if photos:

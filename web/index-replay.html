@@ -1709,10 +1709,13 @@
                         if (psData && psData.photos && psData.photos.length > 0) {
                             // Use first photo from Planespotters.net
                             const photo = psData.photos[0];
-                            // Prefer thumbnail_large, fallback to thumbnail
+                            // Planespotters.net API provides:
+                            // - thumbnail: 200px width
+                            // - thumbnail_large: 497px width
+                            // Larger sizes are not available via API (403 Forbidden)
                             photoUrl = photo.thumbnail_large?.src || photo.thumbnail?.src;
-                            // Try to get full-size URL (large or original)
-                            fullPhotoUrl = photo.large?.src || photo.original?.src || photoUrl;
+                            // Use thumbnail_large as full-size since larger sizes aren't available
+                            fullPhotoUrl = photo.thumbnail_large?.src || photo.thumbnail?.src;
                             if (photoUrl) {
                                 photoInfo = {
                                     photographer: photo.photographer,
@@ -1830,13 +1833,14 @@
                         var fileTitle = validResults[0].title;
                     }
                     // Get image info and categories to validate it's an aircraft photo
+                    // Request larger thumbnail (1200px) for better quality in modal
                     const imageParams = new URLSearchParams({
                         action: 'query',
                         format: 'json',
                         titles: fileTitle,
                         prop: 'imageinfo|categories',
                         iiprop: 'url|thumburl',
-                        iiurlwidth: '400', // Thumbnail width
+                        iiurlwidth: '1200', // Larger thumbnail for better quality (can be 200, 400, 640, 800, 1024, 1200, etc.)
                         cllimit: '10', // Get categories
                         origin: '*'
                     });
