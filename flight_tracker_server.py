@@ -779,7 +779,8 @@ def process_aircraft_data(aircraft_data):
                 'aircraft_model': None,
                 'aircraft_type': None,
                 'aircraft_registration': None,
-                'last_distance': distance  # Store initial distance for adaptive timeout
+                'last_distance': distance,  # Store initial distance for adaptive timeout
+                'position_history': []  # Store recent positions for round-trip route analysis
             }
             
             # Lookup route information (only for new flights, requires callsign)
@@ -789,7 +790,13 @@ def process_aircraft_data(aircraft_data):
                     lat = ac.get('lat')
                     lon = ac.get('lon')
                     if lat and lon:
+                        # Store first position
                         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        flight_memory[icao]['position_history'].append({
+                            'lat': lat,
+                            'lon': lon,
+                            'timestamp': timestamp
+                        })
                         # Track API call
                         with api_tracker_lock:
                             if icao not in api_call_tracker:
@@ -798,7 +805,8 @@ def process_aircraft_data(aircraft_data):
                             api_call_tracker[icao]['last_call'] = timestamp
                             call_count = api_call_tracker[icao]['route_calls']
                         print(f"[{timestamp}] 🆕 NEW FLIGHT DETECTED: {callsign} (ICAO: {icao}) - Triggering route API lookup (call #{call_count} for this flight)")
-                        route_info = get_flight_route(icao, callsign, lat, lon)
+                        # Pass position history for round-trip route analysis
+                        route_info = get_flight_route(icao, callsign, lat, lon, position_history=flight_memory[icao]['position_history'])
                         if route_info:
                             if route_info.get('error'):
                                 flight_memory[icao]['lookup_error'] = route_info.get('error')
@@ -814,6 +822,9 @@ def process_aircraft_data(aircraft_data):
                                 flight_memory[icao]['origin_country'] = route_info.get('origin_country')
                                 flight_memory[icao]['destination_country'] = route_info.get('destination_country')
                                 flight_memory[icao]['source'] = route_info.get('source', 'unknown')
+                                flight_memory[icao]['full_route'] = route_info.get('full_route')
+                                flight_memory[icao]['full_route_iata'] = route_info.get('full_route_iata')
+                                flight_memory[icao]['is_round_trip'] = route_info.get('is_round_trip', False)
                                 # Log successful route lookup (first time only)
                                 if not hasattr(process_aircraft_data, '_route_success_logged'):
                                     process_aircraft_data._route_success_logged = set()
@@ -869,6 +880,22 @@ def process_aircraft_data(aircraft_data):
             if distance is not None:
                 flight_memory[icao]['last_distance'] = distance
             
+            # Initialize position_history if it doesn't exist
+            if 'position_history' not in flight_memory[icao]:
+                flight_memory[icao]['position_history'] = []
+            
+            # Store position in history (keep last 10 positions for round-trip analysis)
+            if lat and lon:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                flight_memory[icao]['position_history'].append({
+                    'lat': lat,
+                    'lon': lon,
+                    'timestamp': timestamp
+                })
+                # Keep only last 10 positions
+                if len(flight_memory[icao]['position_history']) > 10:
+                    flight_memory[icao]['position_history'] = flight_memory[icao]['position_history'][-10:]
+            
             # Update callsign if it changed
             if callsign and callsign != flight_memory[icao].get('callsign'):
                 flight_memory[icao]['callsign'] = callsign
@@ -906,7 +933,8 @@ def process_aircraft_data(aircraft_data):
                         call_count = api_call_tracker[icao]['route_calls']
                     retry_reason = "retry (cycle 20)" if flight_memory[icao]['seen_cycles'] == 20 else ("retry (position now available)" if had_no_position else "retry (no previous attempt)")
                     print(f"[{timestamp}] 🔄 RETRY ROUTE LOOKUP: {callsign} (ICAO: {icao}) - Reason: {retry_reason} (call #{call_count} for this flight)")
-                    route_info = get_flight_route(icao, callsign, lat, lon)
+                    # Pass position history for round-trip route analysis
+                    route_info = get_flight_route(icao, callsign, lat, lon, position_history=flight_memory[icao].get('position_history', []))
                     if route_info:
                         if route_info.get('error'):
                             flight_memory[icao]['lookup_error'] = route_info.get('error')
@@ -922,6 +950,9 @@ def process_aircraft_data(aircraft_data):
                             flight_memory[icao]['origin_country'] = route_info.get('origin_country')
                             flight_memory[icao]['destination_country'] = route_info.get('destination_country')
                             flight_memory[icao]['source'] = route_info.get('source', 'unknown')
+                            flight_memory[icao]['full_route'] = route_info.get('full_route')
+                            flight_memory[icao]['full_route_iata'] = route_info.get('full_route_iata')
+                            flight_memory[icao]['is_round_trip'] = route_info.get('is_round_trip', False)
                             flight_memory[icao]['lookup_error'] = None  # Clear error
                             # Log successful route lookup
                             if not hasattr(process_aircraft_data, '_route_success_logged'):
@@ -956,6 +987,9 @@ def process_aircraft_data(aircraft_data):
             enriched['origin_country'] = flight_memory[icao].get('origin_country')
             enriched['destination_country'] = flight_memory[icao].get('destination_country')
             enriched['route_source'] = flight_memory[icao].get('source')
+            enriched['full_route'] = flight_memory[icao].get('full_route')
+            enriched['full_route_iata'] = flight_memory[icao].get('full_route_iata')
+            enriched['is_round_trip'] = flight_memory[icao].get('is_round_trip', False)
             enriched['aircraft_model'] = flight_memory[icao].get('aircraft_model')
             enriched['aircraft_type'] = flight_memory[icao].get('aircraft_type')
             enriched['aircraft_registration'] = flight_memory[icao].get('aircraft_registration')
@@ -1021,7 +1055,9 @@ def process_aircraft_data(aircraft_data):
                             'origin_country': enriched.get('origin_country'),
                             'destination_country': enriched.get('destination_country'),
                             'airline_code': enriched.get('airline_code'),
-                            'airline_name': enriched.get('airline_name')
+                            'airline_name': enriched.get('airline_name'),
+                            'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
+                            'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False)
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
                         flight_memory[icao]['flight_id'] = flight_id
@@ -1058,7 +1094,9 @@ def process_aircraft_data(aircraft_data):
                             'origin_country': enriched.get('origin_country'),
                             'destination_country': enriched.get('destination_country'),
                             'airline_code': enriched.get('airline_code'),
-                            'airline_name': enriched.get('airline_name')
+                            'airline_name': enriched.get('airline_name'),
+                            'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
+                            'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False)
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
                         flight_memory[icao]['flight_id'] = flight_id
@@ -1082,6 +1120,8 @@ def process_aircraft_data(aircraft_data):
                             flight_info['destination_country'] = mem.get('destination_country')
                             flight_info['airline_code'] = mem.get('airline_code')
                             flight_info['airline_name'] = mem.get('airline_name')
+                            flight_info['full_route'] = mem.get('full_route')
+                            flight_info['is_round_trip'] = mem.get('is_round_trip', False)
                         
                         # Also check enriched data for route info
                         if enriched.get('origin') or enriched.get('destination'):

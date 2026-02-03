@@ -10,6 +10,7 @@ import sys
 import os
 import time
 from datetime import datetime
+from math import radians, cos, sin, asin, sqrt
 
 # OpenFlights airport database URL and cache file
 OPENFLIGHTS_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
@@ -480,7 +481,17 @@ def get_aircraft_info_adsblol(icao):
         print(f"[{timestamp}] API EXCEPTION: {icao} - {str(e)}")
     return None
 
-def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two points in km"""
+    R = 6371  # Earth radius in km
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    return R * c
+
+def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None, position_history=None):
     """Get flight route from adsb.lol routeset API
     
     Args:
@@ -488,6 +499,8 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
         icao: ICAO24 hex code (optional, used to get position if lat/lon not provided)
         lat: Latitude (optional, will be fetched if not provided)
         lon: Longitude (optional, will be fetched if not provided)
+        position_history: Optional list of recent positions [{'lat': ..., 'lon': ..., 'timestamp': ...}, ...]
+                         Used to determine direction for round-trip routes
     
     Returns:
         dict with 'origin', 'destination', 'source' keys, or None if not found
@@ -527,11 +540,155 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
                 airports = route.get('_airports', [])
                 
                 if airports and len(airports) >= 2:
-                    # Prefer IATA codes (more user-friendly) but fallback to ICAO
-                    origin_iata = airports[0].get('iata')
-                    origin_icao = airports[0].get('icao')
-                    destination_iata = airports[1].get('iata')
-                    destination_icao = airports[1].get('icao')
+                    # Check if this is a round-trip route (e.g., CGN-BER-CGN)
+                    is_round_trip = len(airports) >= 3 and airports[0].get('iata') == airports[2].get('iata')
+                    
+                    if is_round_trip and position_history and len(position_history) >= 2:
+                        # Round-trip route detected - analyze movement to determine direction
+                        print(f"[{timestamp}] Round-trip route detected for {callsign.strip()}: {airport_codes}")
+                        print(f"[{timestamp}] Analyzing {len(position_history)} positions to determine direction...")
+                        
+                        # Get unique airports (CGN and BER in CGN-BER-CGN)
+                        unique_airports = []
+                        seen_codes = set()
+                        for airport in airports:
+                            code = airport.get('iata') or airport.get('icao')
+                            if code and code not in seen_codes:
+                                unique_airports.append({
+                                    'code': code,
+                                    'iata': airport.get('iata'),
+                                    'icao': airport.get('icao'),
+                                    'lat': airport.get('lat'),
+                                    'lon': airport.get('lon'),
+                                    'name': airport.get('name', '')
+                                })
+                                seen_codes.add(code)
+                        
+                        if len(unique_airports) >= 2:
+                            # Find which airport the first position is closest to
+                            first_pos = position_history[0]
+                            first_lat = first_pos.get('lat')
+                            first_lon = first_pos.get('lon')
+                            
+                            if first_lat and first_lon:
+                                # Calculate distances to each unique airport
+                                airport_distances = []
+                                for airport in unique_airports:
+                                    if airport['lat'] and airport['lon']:
+                                        dist = haversine_distance(first_lat, first_lon, airport['lat'], airport['lon'])
+                                        airport_distances.append((dist, airport))
+                                
+                                if airport_distances:
+                                    # Sort by distance - closest airport first
+                                    airport_distances.sort(key=lambda x: x[0])
+                                    closest_airport = airport_distances[0][1]
+                                    closest_dist = airport_distances[0][0]
+                                    
+                                    print(f"[{timestamp}] First position ({first_lat:.5f}, {first_lon:.5f}) is closest to {closest_airport['code']} ({closest_dist:.2f} km away)")
+                                    
+                                    # Analyze movement: check if aircraft is moving away from or toward the closest airport
+                                    # Use first few positions (up to 5) to determine trend
+                                    positions_to_analyze = position_history[:min(5, len(position_history))]
+                                    distances_to_closest = []
+                                    
+                                    for pos in positions_to_analyze:
+                                        if pos.get('lat') and pos.get('lon'):
+                                            dist = haversine_distance(
+                                                pos['lat'], pos['lon'],
+                                                closest_airport['lat'], closest_airport['lon']
+                                            )
+                                            distances_to_closest.append(dist)
+                                    
+                                    if len(distances_to_closest) >= 2:
+                                        # Check if distance is increasing (moving away) or decreasing (moving toward)
+                                        first_dist = distances_to_closest[0]
+                                        last_dist = distances_to_closest[-1]
+                                        distance_change = last_dist - first_dist
+                                        
+                                        # Threshold: if distance changes by more than 2km, consider it significant
+                                        if abs(distance_change) > 2.0:
+                                            if distance_change > 0:
+                                                # Moving away from closest airport - it's the origin
+                                                print(f"[{timestamp}] Movement analysis: Aircraft moving AWAY from {closest_airport['code']} (distance increased from {first_dist:.2f}km to {last_dist:.2f}km)")
+                                                print(f"[{timestamp}] Conclusion: {closest_airport['code']} is the ORIGIN")
+                                                
+                                                # Find the other airport as destination
+                                                other_airport = airport_distances[1][1] if len(airport_distances) > 1 else unique_airports[1]
+                                                origin_iata = closest_airport.get('iata')
+                                                origin_icao = closest_airport.get('icao')
+                                                destination_iata = other_airport.get('iata')
+                                                destination_icao = other_airport.get('icao')
+                                            else:
+                                                # Moving toward closest airport - it's the destination
+                                                print(f"[{timestamp}] Movement analysis: Aircraft moving TOWARD {closest_airport['code']} (distance decreased from {first_dist:.2f}km to {last_dist:.2f}km)")
+                                                print(f"[{timestamp}] Conclusion: {closest_airport['code']} is the DESTINATION")
+                                                
+                                                # Find the other airport as origin
+                                                other_airport = airport_distances[1][1] if len(airport_distances) > 1 else unique_airports[0]
+                                                origin_iata = other_airport.get('iata')
+                                                origin_icao = other_airport.get('icao')
+                                                destination_iata = closest_airport.get('iata')
+                                                destination_icao = closest_airport.get('icao')
+                                        else:
+                                            # Not enough movement to determine - use proximity heuristic
+                                            print(f"[{timestamp}] Movement analysis: Insufficient movement ({abs(distance_change):.2f}km change), using proximity heuristic")
+                                            # If very close (< 5km), assume departing from that airport
+                                            if closest_dist < 5.0:
+                                                print(f"[{timestamp}] Very close to {closest_airport['code']} ({closest_dist:.2f}km) - assuming DEPARTURE")
+                                                other_airport = airport_distances[1][1] if len(airport_distances) > 1 else unique_airports[1]
+                                                origin_iata = closest_airport.get('iata')
+                                                origin_icao = closest_airport.get('icao')
+                                                destination_iata = other_airport.get('iata')
+                                                destination_icao = other_airport.get('icao')
+                                            else:
+                                                # Default to first leg
+                                                origin_iata = airports[0].get('iata')
+                                                origin_icao = airports[0].get('icao')
+                                                destination_iata = airports[1].get('iata')
+                                                destination_icao = airports[1].get('icao')
+                                    else:
+                                        # Not enough positions - use proximity heuristic
+                                        print(f"[{timestamp}] Not enough positions for movement analysis, using proximity heuristic")
+                                        if closest_dist < 5.0:
+                                            other_airport = airport_distances[1][1] if len(airport_distances) > 1 else unique_airports[1]
+                                            origin_iata = closest_airport.get('iata')
+                                            origin_icao = closest_airport.get('icao')
+                                            destination_iata = other_airport.get('iata')
+                                            destination_icao = other_airport.get('icao')
+                                        else:
+                                            origin_iata = airports[0].get('iata')
+                                            origin_icao = airports[0].get('icao')
+                                            destination_iata = airports[1].get('iata')
+                                            destination_icao = airports[1].get('icao')
+                                else:
+                                    # Couldn't calculate distances - use first leg
+                                    print(f"[{timestamp}] Could not calculate distances to airports, using first leg")
+                                    origin_iata = airports[0].get('iata')
+                                    origin_icao = airports[0].get('icao')
+                                    destination_iata = airports[1].get('iata')
+                                    destination_icao = airports[1].get('icao')
+                            else:
+                                # No valid first position - use first leg
+                                print(f"[{timestamp}] No valid first position, using first leg")
+                                origin_iata = airports[0].get('iata')
+                                origin_icao = airports[0].get('icao')
+                                destination_iata = airports[1].get('iata')
+                                destination_icao = airports[1].get('icao')
+                        else:
+                            # Not enough unique airports - use first leg
+                            print(f"[{timestamp}] Not enough unique airports, using first leg")
+                            origin_iata = airports[0].get('iata')
+                            origin_icao = airports[0].get('icao')
+                            destination_iata = airports[1].get('iata')
+                            destination_icao = airports[1].get('icao')
+                    else:
+                        # Not a round-trip route, or not enough position history - use first two airports
+                        if is_round_trip:
+                            print(f"[{timestamp}] Round-trip route detected but insufficient position history ({len(position_history) if position_history else 0} positions), using first leg")
+                        origin_iata = airports[0].get('iata')
+                        origin_icao = airports[0].get('icao')
+                        destination_iata = airports[1].get('iata')
+                        destination_icao = airports[1].get('icao')
                     
                     origin = origin_iata or origin_icao
                     destination = destination_iata or destination_icao
@@ -565,7 +722,16 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
                             result['origin_country'] = origin_country
                         if destination_country:
                             result['destination_country'] = destination_country
+                        
+                        # Include full route string if it's a round-trip route
+                        if is_round_trip:
+                            result['is_round_trip'] = True
+                            result['full_route'] = airport_codes  # e.g., "CGN-BER-CGN" or "EDDK-EDDB-EDDK"
+                            result['full_route_iata'] = route.get('_airport_codes_iata', '')  # e.g., "CGN-BER-CGN"
+                        
                         print(f"[{timestamp}] API SUCCESS: Route found for {callsign.strip()}: {origin} → {destination}")
+                        if is_round_trip:
+                            print(f"[{timestamp}] Round-trip route: {result.get('full_route_iata', airport_codes)}")
                         return result
             print(f"[{timestamp}] API WARNING: No route found for {callsign.strip()}")
         else:
@@ -582,7 +748,7 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None):
     
     return None
 
-def get_flight_route(icao, callsign=None, lat=None, lon=None):
+def get_flight_route(icao, callsign=None, lat=None, lon=None, position_history=None):
     """
     Get flight origin and destination from adsb.lol routeset API
     
@@ -593,6 +759,7 @@ def get_flight_route(icao, callsign=None, lat=None, lon=None):
         callsign: Flight callsign (required)
         lat: Latitude (optional, will be fetched from adsb.lol if not provided)
         lon: Longitude (optional, will be fetched from adsb.lol if not provided)
+        position_history: Optional list of recent positions for round-trip route analysis
     
     Returns:
         dict with 'origin', 'destination', 'source' keys, or None if not found
@@ -601,7 +768,7 @@ def get_flight_route(icao, callsign=None, lat=None, lon=None):
     if not callsign:
         return None
     
-    return get_flight_route_adsblol(callsign, icao, lat, lon)
+    return get_flight_route_adsblol(callsign, icao, lat, lon, position_history=position_history)
 
 if __name__ == '__main__':
     # Allow manual lookup from command line

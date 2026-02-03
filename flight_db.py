@@ -542,9 +542,22 @@ class FlightDatabase:
                 airline_name TEXT,
                 first_seen TEXT NOT NULL,
                 last_seen TEXT,
-                status TEXT
+                status TEXT,
+                full_route TEXT,
+                is_round_trip INTEGER DEFAULT 0
             )
         ''')
+        
+        # Add new columns for round-trip route information if they don't exist
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN full_route TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN is_round_trip INTEGER DEFAULT 0')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_aircraft ON flights(aircraft_icao)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_callsign ON flights(callsign)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_time ON flights(first_seen, last_seen)')
@@ -723,8 +736,9 @@ class FlightDatabase:
                     aircraft_icao, callsign, origin, destination,
                     origin_country, destination_country,
                     airline_code, airline_name,
-                    {self.first_seen_col}, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    {self.first_seen_col}, status,
+                    full_route, is_round_trip
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 icao,
                 callsign,
@@ -735,7 +749,9 @@ class FlightDatabase:
                 info.get('airline_code'),
                 info.get('airline_name'),
                 now,
-                'airborne'
+                'airborne',
+                info.get('full_route'),
+                1 if info.get('is_round_trip') else 0
             ))
             
             flight_id = cursor.lastrowid
@@ -785,7 +801,9 @@ class FlightDatabase:
                     origin_country = COALESCE(?, origin_country),
                     destination_country = COALESCE(?, destination_country),
                     airline_code = COALESCE(?, airline_code),
-                    airline_name = COALESCE(?, airline_name)
+                    airline_name = COALESCE(?, airline_name),
+                    full_route = COALESCE(?, full_route),
+                    is_round_trip = COALESCE(?, is_round_trip)
                 WHERE id = ?
             ''', (
                 flight_info.get('origin'),
@@ -794,6 +812,8 @@ class FlightDatabase:
                 flight_info.get('destination_country'),
                 flight_info.get('airline_code'),
                 flight_info.get('airline_name'),
+                flight_info.get('full_route'),
+                1 if flight_info.get('is_round_trip') else 0,
                 flight_id
             ))
             

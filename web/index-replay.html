@@ -1659,6 +1659,13 @@
                         <div class="flight-details">
                             ${flight.origin && flight.destination ? `
                                 <div class="flight-route-display">
+                                    ${flight.is_round_trip && flight.full_route_iata ? `
+                                        <div style="grid-column: 1 / -1; text-align: center; margin-bottom: 12px; padding: 8px 12px; background: rgba(62, 145, 190, 0.1); border-radius: 6px; border: 1px solid rgba(62, 145, 190, 0.3);">
+                                            <div style="font-size: 0.75em; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Round-Trip Route</div>
+                                            <div style="font-size: 1.1em; font-weight: 600; color: var(--route-color);">${flight.full_route_iata}</div>
+                                            <div style="font-size: 0.7em; color: var(--text-muted); margin-top: 4px;">This flight operates a round-trip route. The displayed origin/destination represents the leg detected during tracking.</div>
+                                        </div>
+                                    ` : ''}
                                     <div class="route-section">
                                         <div class="route-section-label">From</div>
                                         <div class="route-airport-code">${flight.origin}</div>
@@ -2069,8 +2076,22 @@
                     return;
                 }
                 
-                // Create map path
+                // Check if flight is approaching or departing based on distance
+                // If first position is closer to receiver than last, it's departing (tracking started after takeoff from nearby airport)
+                // If last position is closer, it's approaching (arriving at nearby airport)
+                const firstDist = validPositions[0].distance;
+                const lastDist = validPositions[validPositions.length - 1].distance;
+                const isDeparting = firstDist < lastDist && (lastDist - firstDist) > 5; // More than 5km difference
+                
+                // Create map path (always show chronological order, but note if it's departing)
                 const path = validPositions.map(p => [p.lat, p.lon]);
+                
+                // Store info for tooltip/marker labels
+                const flightInfo = {
+                    isDeparting: isDeparting,
+                    firstDist: firstDist,
+                    lastDist: lastDist
+                };
                 
                 // Ensure container is visible and has dimensions before initializing map
                 mapContainer.style.display = 'block';
@@ -2122,27 +2143,34 @@
                     });
                 }
                 
-                // Add start marker
+                // Add first position marker (green) - where tracking started
                 if (path.length > 0) {
+                    const firstLabel = flightInfo.isDeparting 
+                        ? `First Detected (${flightInfo.firstDist?.toFixed(1)}km)` 
+                        : `First Position (${flightInfo.firstDist?.toFixed(1)}km)`;
                     L.marker(path[0], {
                         icon: L.divIcon({
                             className: 'flight-start-marker',
-                            html: '<div style="background: #28a745; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
+                            html: '<div style="background: #28a745; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;" title="First Position"></div>',
                             iconSize: [12, 12]
                         })
-                    }).addTo(map);
+                    }).addTo(map).bindTooltip(firstLabel, {permanent: false, offset: [0, -10]});
                 }
                 
-                // Add end marker
+                // Add last position marker (red) - where tracking ended
                 if (path.length > 1) {
+                    const lastLabel = flightInfo.isDeparting 
+                        ? `Last Detected (${flightInfo.lastDist?.toFixed(1)}km) - Departing` 
+                        : `Last Position (${flightInfo.lastDist?.toFixed(1)}km)`;
                     L.marker(path[path.length - 1], {
                         icon: L.divIcon({
                             className: 'flight-end-marker',
-                            html: '<div style="background: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>',
+                            html: '<div style="background: #dc3545; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;" title="Last Position"></div>',
                             iconSize: [12, 12]
                         })
-                    }).addTo(map);
+                    }).addTo(map).bindTooltip(lastLabel, {permanent: false, offset: [0, -10]});
                 }
+                
                 
                 // Hide loading
                 loadingDiv.style.display = 'none';
