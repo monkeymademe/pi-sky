@@ -440,8 +440,24 @@
             align-items: flex-start;
         }
         
+        .flight-content-row > .flight-details {
+            width: calc(50% - 10px) !important;
+            min-width: calc(50% - 10px) !important;
+            max-width: calc(50% - 10px) !important;
+            flex: 0 0 calc(50% - 10px) !important;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .flight-content-row > div:not(.flight-details) {
+            width: calc(50% - 10px) !important;
+            min-width: calc(50% - 10px) !important;
+            max-width: calc(50% - 10px) !important;
+            flex: 0 0 calc(50% - 10px) !important;
+        }
+        
         .flight-details {
-            flex: 1;
             display: flex;
             flex-direction: column;
             gap: 15px;
@@ -851,12 +867,12 @@
         }
         
         .map-loading {
+            height: 300px;
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100%;
             color: var(--text-muted);
-            font-size: 0.9em;
+            font-size: 0.95em;
         }
         
         .positions-header {
