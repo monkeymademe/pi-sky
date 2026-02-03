@@ -1659,13 +1659,6 @@
                         <div class="flight-details">
                             ${flight.origin && flight.destination ? `
                                 <div class="flight-route-display">
-                                    ${flight.is_round_trip && flight.full_route_iata ? `
-                                        <div style="grid-column: 1 / -1; text-align: center; margin-bottom: 12px; padding: 8px 12px; background: rgba(62, 145, 190, 0.1); border-radius: 6px; border: 1px solid rgba(62, 145, 190, 0.3);">
-                                            <div style="font-size: 0.75em; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Round-Trip Route</div>
-                                            <div style="font-size: 1.1em; font-weight: 600; color: var(--route-color);">${flight.full_route_iata}</div>
-                                            <div style="font-size: 0.7em; color: var(--text-muted); margin-top: 4px;">This flight operates a round-trip route. The displayed origin/destination represents the leg detected during tracking.</div>
-                                        </div>
-                                    ` : ''}
                                     <div class="route-section">
                                         <div class="route-section-label">From</div>
                                         <div class="route-airport-code">${flight.origin}</div>
@@ -1712,9 +1705,18 @@
                                 <div class="aircraft-photo-loading">Loading aircraft photo...</div>
                             </div>
                         </div>
-                        <div class="flight-map-container">
-                            <div class="map-loading" id="map-loading-${flightId}">Loading flight path...</div>
-                            <div class="flight-map" id="flight-map-${flightId}" style="display: none; width: 100%; height: 100%;"></div>
+                        <div style="display: flex; flex-direction: column;">
+                            <div class="flight-map-container">
+                                <div class="map-loading" id="map-loading-${flightId}">Loading flight path...</div>
+                                <div class="flight-map" id="flight-map-${flightId}" style="display: none; width: 100%; height: 100%;"></div>
+                            </div>
+                            ${flight.is_round_trip && flight.full_route_iata ? `
+                            <div class="round-trip-info" style="margin-top: 15px; padding: 12px 16px; background: rgba(62, 145, 190, 0.1); border-radius: 8px; border: 1px solid rgba(62, 145, 190, 0.3);">
+                                <div style="font-size: 0.8em; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; font-weight: 600;">Round-Trip Route</div>
+                                <div style="font-size: 1.2em; font-weight: 600; color: var(--route-color); margin-bottom: 6px;">${flight.full_route_iata}</div>
+                                <div style="font-size: 0.85em; color: var(--text-muted); line-height: 1.4;">This flight operates a round-trip route. The displayed origin/destination represents the leg detected during tracking.</div>
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
                     <div class="positions-header">

@@ -544,6 +544,7 @@ class FlightDatabase:
                 last_seen TEXT,
                 status TEXT,
                 full_route TEXT,
+                full_route_iata TEXT,
                 is_round_trip INTEGER DEFAULT 0
             )
         ''')
@@ -551,6 +552,10 @@ class FlightDatabase:
         # Add new columns for round-trip route information if they don't exist
         try:
             cursor.execute('ALTER TABLE flights ADD COLUMN full_route TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN full_route_iata TEXT')
         except sqlite3.OperationalError:
             pass  # Column already exists
         try:
@@ -737,8 +742,8 @@ class FlightDatabase:
                     origin_country, destination_country,
                     airline_code, airline_name,
                     {self.first_seen_col}, status,
-                    full_route, is_round_trip
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    full_route, full_route_iata, is_round_trip
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 icao,
                 callsign,
@@ -751,6 +756,7 @@ class FlightDatabase:
                 now,
                 'airborne',
                 info.get('full_route'),
+                info.get('full_route_iata'),
                 1 if info.get('is_round_trip') else 0
             ))
             
@@ -803,6 +809,7 @@ class FlightDatabase:
                     airline_code = COALESCE(?, airline_code),
                     airline_name = COALESCE(?, airline_name),
                     full_route = COALESCE(?, full_route),
+                    full_route_iata = COALESCE(?, full_route_iata),
                     is_round_trip = COALESCE(?, is_round_trip)
                 WHERE id = ?
             ''', (
@@ -813,6 +820,7 @@ class FlightDatabase:
                 flight_info.get('airline_code'),
                 flight_info.get('airline_name'),
                 flight_info.get('full_route'),
+                flight_info.get('full_route_iata'),
                 1 if flight_info.get('is_round_trip') else 0,
                 flight_id
             ))

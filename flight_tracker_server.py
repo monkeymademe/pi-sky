@@ -1057,6 +1057,7 @@ def process_aircraft_data(aircraft_data):
                             'airline_code': enriched.get('airline_code'),
                             'airline_name': enriched.get('airline_name'),
                             'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
+                            'full_route_iata': enriched.get('full_route_iata') or flight_memory[icao].get('full_route_iata'),
                             'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False)
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
@@ -1096,6 +1097,7 @@ def process_aircraft_data(aircraft_data):
                             'airline_code': enriched.get('airline_code'),
                             'airline_name': enriched.get('airline_name'),
                             'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
+                            'full_route_iata': enriched.get('full_route_iata') or flight_memory[icao].get('full_route_iata'),
                             'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False)
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
@@ -1121,6 +1123,7 @@ def process_aircraft_data(aircraft_data):
                             flight_info['airline_code'] = mem.get('airline_code')
                             flight_info['airline_name'] = mem.get('airline_name')
                             flight_info['full_route'] = mem.get('full_route')
+                            flight_info['full_route_iata'] = mem.get('full_route_iata')
                             flight_info['is_round_trip'] = mem.get('is_round_trip', False)
                         
                         # Also check enriched data for route info
@@ -2192,6 +2195,9 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     'first_seen': flight.get('first_seen'),
                     'last_seen': flight.get('last_seen'),
                     'status': flight.get('status'),
+                    'full_route': flight.get('full_route'),
+                    'full_route_iata': flight.get('full_route_iata'),
+                    'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False,
                     'positions': positions,
                     'count': len(positions)
                 }
@@ -2247,7 +2253,10 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     'first_seen': flight.get('first_seen'),
                     'last_seen': flight.get('last_seen'),
                     'status': flight.get('status'),
-                    'position_count': position_count
+                    'position_count': position_count,
+                    'full_route': flight.get('full_route'),
+                    'full_route_iata': flight.get('full_route_iata'),
+                    'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False
                 }
                 
                 self.send_response(200)
@@ -2346,7 +2355,10 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'first_seen': flight.get('first_seen'),
                         'last_seen': flight.get('last_seen'),
                         'status': flight.get('status'),
-                        'position_count': position_count
+                        'position_count': position_count,
+                        'full_route': flight.get('full_route'),
+                        'full_route_iata': flight.get('full_route_iata'),
+                        'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False
                     }
                     flight_list.append(flight_data)
                 
