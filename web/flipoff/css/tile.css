@@ -1,0 +1,108 @@
+/* Tile Wrapper */
+.tile {
+  width: var(--tile-size);
+  height: var(--tile-size);
+  perspective: 400px;
+  background: #111;
+  border-radius: 3px;
+}
+
+/* Inner Container (transform target) */
+.tile-inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* Tile Faces */
+.tile-front,
+.tile-back {
+  position: absolute;
+  inset: 1px;
+  backface-visibility: hidden;
+  background: #222;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.5),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.tile-front span,
+.tile-back span {
+  font-size: calc(var(--tile-size) * 0.52);
+  font-weight: 700;
+  color: #FFFFFF;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+.tile-back {
+  transform: rotateX(180deg);
+}
+
+/* Horizontal Split Line — subtle mechanical seam */
+.tile-front::after,
+.tile-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+/* Highlight Sweep (metallic reflection during flip) */
+.tile-front::before,
+.tile-back::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 45%,
+    rgba(255, 255, 255, 0.15) 50%,
+    rgba(255, 255, 255, 0.08) 55%,
+    transparent 100%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* 3D Flip Animation */
+.tile-inner.flipping {
+  animation: tileFlip var(--flip-duration, 300ms) ease-in-out forwards;
+}
+
+.tile-inner.flipping .tile-front::before,
+.tile-inner.flipping .tile-back::before {
+  opacity: 1;
+}
+
+@keyframes tileFlip {
+  0% {
+    transform: rotateX(0deg);
+  }
+  50% {
+    transform: rotateX(-90deg);
+  }
+  100% {
+    transform: rotateX(-180deg);
+  }
+}
+
+/* GPU compositing hint during animation only */
+.tile-inner.flipping,
+.tile.scrambling .tile-inner {
+  will-change: transform;
+}

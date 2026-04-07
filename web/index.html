@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flight Tracker - Live Feed</title>
+    <link rel="stylesheet" href="flipoff/css/board.css">
+    <link rel="stylesheet" href="flipoff/css/tile.css">
+    <link rel="stylesheet" href="flipoff/flipoff-section.css">
     <style>
         :root {
             --bg-gradient-start: #3e91be;
@@ -566,6 +569,11 @@
         .theme-toggle:hover {
             opacity: 0.8;
         }
+
+        /* FlipOff lives in flipoff/; section chrome only here */
+        .flipoff-section-inner {
+            max-width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -607,6 +615,22 @@
                 </div>
             </div>
         </div>
+
+        <section class="flipoff-section" aria-label="Latest flight split-flap display">
+            <div class="flipoff-section-header">
+                <h2 class="flipoff-section-title">Latest flight</h2>
+                <button type="button" id="flipoff-mute-btn" title="Toggle split-flap sound" aria-label="Toggle split-flap sound" aria-pressed="false">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="flipoff-section-inner">
+                <div class="flipoff-board-wrap" id="flipoff-board-container"></div>
+            </div>
+        </section>
         
         <div id="flightsContainer" class="flights-grid">
             <div class="empty-state">
@@ -921,14 +945,17 @@
                         <p>Waiting for aircraft data...</p>
                     </div>
                 `;
-                return;
+            } else {
+                flights.forEach(flight => {
+                    const card = createFlightCard(flight);
+                    container.appendChild(card);
+                });
             }
-            
-            // Create flight cards
-            flights.forEach(flight => {
-                const card = createFlightCard(flight);
-                container.appendChild(card);
-            });
+
+            document.dispatchEvent(new CustomEvent('flights-updated', {
+                detail: { flights, stats },
+                bubbles: false,
+            }));
         }
         
         function scheduleReconnect() {
@@ -1042,6 +1069,7 @@
             initTheme();
         });
     </script>
+    <script type="module" src="flipoff/flipoff-integration.js"></script>
 </body>
 </html>
 

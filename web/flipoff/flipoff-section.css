@@ -1,0 +1,101 @@
+/* Layout + theme tie-in for embedded FlipOff (see vendor css/board.css, css/tile.css) */
+.flipoff-section {
+  margin-bottom: 24px;
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 16px 20px 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  transition: background 0.3s ease;
+}
+
+.flipoff-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.flipoff-section-title {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+#flipoff-mute-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--border-color);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+#flipoff-mute-btn:hover {
+  background: var(--nav-hover);
+  color: var(--accent-color);
+}
+
+#flipoff-mute-btn.muted svg path:last-child,
+#flipoff-mute-btn.muted svg path:nth-child(2) {
+  display: none;
+}
+
+.flipoff-board-wrap {
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Hide FlipOff keyboard overlay on embedded board */
+.flipoff-board-wrap .keyboard-hint,
+.flipoff-board-wrap .shortcuts-overlay {
+  display: none !important;
+}
+
+/* Board-only responsive breakpoints (from FlipOff responsive.css), scoped */
+@media (min-width: 2000px) {
+  .flipoff-board-wrap .board {
+    --tile-size: 65px;
+    --tile-gap: 5px;
+    padding: 36px 36px 48px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .flipoff-board-wrap .board {
+    --tile-size: clamp(32px, 4vw, 50px);
+  }
+}
+
+@media (max-width: 900px) {
+  .flipoff-board-wrap .board {
+    --tile-size: clamp(26px, 4.5vw, 40px);
+    padding: 20px 16px 32px;
+    border-radius: 12px;
+  }
+
+  .flipoff-board-wrap .accent-segment {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+@media (max-width: 600px) {
+  .flipoff-board-wrap .board {
+    --tile-size: clamp(18px, 4vw, 28px);
+    --tile-gap: 2px;
+    padding: 12px 8px 24px;
+  }
+
+  .flipoff-board-wrap .accent-bar {
+    display: none;
+  }
+}
