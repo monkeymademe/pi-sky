@@ -182,6 +182,17 @@
             height: 20px;
             fill: currentColor;
         }
+
+        .history-flight-plane {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: 50% 50%;
+            will-change: transform;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+        }
         
         .status {
             display: flex;
@@ -1105,6 +1116,7 @@
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
     
     <script>
         let flights = [];
@@ -2152,6 +2164,101 @@
                     weight: 3,
                     opacity: 0.8
                 }).addTo(map);
+
+                function calculateBearing(a, b) {
+                    const lat1 = (a[0] * Math.PI) / 180;
+                    const lat2 = (b[0] * Math.PI) / 180;
+                    const dLon = ((b[1] - a[1]) * Math.PI) / 180;
+                    const y = Math.sin(dLon) * Math.cos(lat2);
+                    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                    let brng = (Math.atan2(y, x) * 180) / Math.PI;
+                    brng = (brng + 360) % 360;
+                    return brng;
+                }
+
+                function interpolatePoint(pathPoints, progress) {
+                    if (pathPoints.length === 1) return pathPoints[0];
+                    const maxIndex = pathPoints.length - 1;
+                    const clamped = Math.max(0, Math.min(maxIndex, progress));
+                    const i0 = Math.floor(clamped);
+                    const i1 = Math.min(maxIndex, i0 + 1);
+                    const t = clamped - i0;
+                    const p0 = pathPoints[i0];
+                    const p1 = pathPoints[i1];
+                    return [
+                        p0[0] + (p1[0] - p0[0]) * t,
+                        p0[1] + (p1[1] - p0[1]) * t,
+                    ];
+                }
+
+                function animatePathAndPlane() {
+                    if (!window.anime || path.length < 2) return;
+
+                    const pathElement = polyline.getElement ? polyline.getElement() : polyline._path;
+                    if (pathElement && pathElement.getTotalLength) {
+                        const totalLength = pathElement.getTotalLength();
+                        pathElement.style.strokeDasharray = `${totalLength}`;
+                        pathElement.style.strokeDashoffset = `${totalLength}`;
+                        anime({
+                            targets: { offset: totalLength },
+                            offset: 0,
+                            duration: 2400,
+                            easing: 'easeOutSine',
+                            update(anim) {
+                                pathElement.style.strokeDashoffset = `${anim.animations[0].currentValue}`;
+                            }
+                        });
+                    }
+
+                    const planeMarker = L.marker(path[0], {
+                        zIndexOffset: 1200,
+                        interactive: false,
+                        icon: L.divIcon({
+                            className: 'history-flight-plane-marker',
+                            iconSize: [18, 18],
+                            iconAnchor: [9, 9],
+                            html: `
+                                <div class="history-flight-plane">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#ff8c00" stroke="white" stroke-width="1"/>
+                                    </svg>
+                                </div>
+                            `
+                        })
+                    }).addTo(map);
+
+                    const state = { progress: 0 };
+                    const maxProgress = path.length - 1;
+                    const duration = Math.max(2600, Math.min(9000, path.length * 90));
+                    let lastBearing = 0;
+
+                    anime({
+                        targets: state,
+                        progress: maxProgress,
+                        duration,
+                        easing: 'linear',
+                        update: () => {
+                            const point = interpolatePoint(path, state.progress);
+                            planeMarker.setLatLng(point);
+
+                            const ahead = interpolatePoint(path, Math.min(maxProgress, state.progress + 0.2));
+                            if (ahead) {
+                                lastBearing = calculateBearing(point, ahead);
+                            }
+                            const planeEl = planeMarker.getElement()?.querySelector('.history-flight-plane');
+                            if (planeEl) {
+                                planeEl.style.transform = `rotate(${lastBearing}deg)`;
+                            }
+                        },
+                        complete: () => {
+                            setTimeout(() => {
+                                if (map && map.hasLayer(planeMarker)) {
+                                    map.removeLayer(planeMarker);
+                                }
+                            }, 1200);
+                        }
+                    });
+                }
                 
                 // Fit map to path
                 if (path.length > 0) {
@@ -2203,6 +2310,7 @@
                             maxZoom: 10
                         });
                     }
+                    animatePathAndPlane();
                 }, 150);
                 
                 setTimeout(() => {

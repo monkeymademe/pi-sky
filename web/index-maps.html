@@ -704,6 +704,7 @@
     
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
     
     <script>
         const EVENTS_URL = window.FLIGHT_TRACKER_EVENTS_URL || `${window.location.origin}/events`;
@@ -712,6 +713,7 @@
         let receiverMarker = null;
         let aircraftMarkers = {};
         let aircraftHeadingLines = {}; // Store heading lines for each aircraft
+        let aircraftMarkerAnimations = {};
         let latestFlights = [];
         let latestStats = {};
         let followedFlightIcao = null;
@@ -924,14 +926,39 @@
             const sign = rate >= 0 ? '+' : '';
             return `${sign}${Math.round(rate)} ft/min`;
         }
+
+        function normalizeAngle(deg) {
+            const value = Number(deg) || 0;
+            return ((value % 360) + 360) % 360;
+        }
+
+        function shortestAngleDelta(from, to) {
+            const a = normalizeAngle(from);
+            const b = normalizeAngle(to);
+            let delta = b - a;
+            if (delta > 180) delta -= 360;
+            if (delta < -180) delta += 360;
+            return delta;
+        }
+
+        function buildAircraftIconHtml(status, rotation) {
+            const color = status === 'unidentified' ? '#9ca3af' : (status === 'new' ? '#10b981' : '#3b82f6');
+            return `
+                <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <svg width="40" height="40" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
+                        <g transform="rotate(${rotation} 12 12)">
+                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${color}" stroke="white" stroke-width="1"/>
+                        </g>
+                    </svg>
+                </div>
+            `;
+        }
         
         function createAircraftMarker(flight) {
             if (flight.lat == null || flight.lon == null) return null;
             
             const status = flight.status || 'new';
             // Use light gray for unidentified flights, otherwise use status-based colors
-            const color = status === 'unidentified' ? '#9ca3af' : (status === 'new' ? '#10b981' : '#3b82f6');
-            
             // Get heading (direction nose is pointing) or track (direction of movement)
             // Heading is preferred as it shows where the plane is actually pointing
             // Track is fallback (direction over ground, which can differ due to wind)
@@ -944,15 +971,7 @@
             const rotation = angle;
             
             // Create plane icon using SVG wrapped in a div, rotated based on heading/track
-            const planeSvg = `
-                <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                    <svg width="40" height="40" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
-                        <g transform="rotate(${rotation} 12 12)">
-                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${color}" stroke="white" stroke-width="1"/>
-                        </g>
-                    </svg>
-                </div>
-            `;
+            const planeSvg = buildAircraftIconHtml(status, rotation);
             
             // Create custom icon with plane SVG
             const icon = L.divIcon({
@@ -1498,6 +1517,76 @@
                 
                 return [newLat, newLon];
             }
+
+            function updateMarkerVisual(marker, flightStatus, angleValue) {
+                const icon = L.divIcon({
+                    className: `aircraft-marker ${flightStatus}`,
+                    iconSize: [40, 40],
+                    html: buildAircraftIconHtml(flightStatus, angleValue),
+                });
+                marker.setIcon(icon);
+            }
+
+            function setHeadingLineLatLng(icao, lat, lon, heading) {
+                if (heading === null || heading === undefined) return;
+                const endpoint = calculateHeadingEndpoint(lat, lon, heading, 5);
+                const linePoints = [[lat, lon], endpoint];
+                if (aircraftHeadingLines[icao]) {
+                    aircraftHeadingLines[icao].setLatLngs(linePoints);
+                }
+            }
+
+            function animateMarkerMovement(marker, flight, targetAngle, positionChanged) {
+                const icao = flight.icao;
+                const status = flight.status || 'new';
+                const oldPos = marker.getLatLng();
+                const startLat = oldPos.lat;
+                const startLon = oldPos.lng;
+                const endLat = flight.lat;
+                const endLon = flight.lon;
+                const startAngle = normalizeAngle(marker._angle ?? targetAngle);
+                const delta = shortestAngleDelta(startAngle, targetAngle);
+                const endAngle = startAngle + delta;
+
+                if (aircraftMarkerAnimations[icao] && typeof aircraftMarkerAnimations[icao].pause === 'function') {
+                    aircraftMarkerAnimations[icao].pause();
+                }
+
+                // Fallback to immediate update if anime.js is unavailable.
+                if (!window.anime || !positionChanged) {
+                    marker.setLatLng([endLat, endLon]);
+                    marker._angle = normalizeAngle(targetAngle);
+                    updateMarkerVisual(marker, status, marker._angle);
+                    setHeadingLineLatLng(icao, endLat, endLon, marker._angle);
+                    return;
+                }
+
+                const tweenState = { lat: startLat, lon: startLon, angle: startAngle };
+                const distance = Math.hypot(endLat - startLat, endLon - startLon);
+                const duration = Math.max(250, Math.min(1200, 250 + distance * 300000));
+
+                aircraftMarkerAnimations[icao] = anime({
+                    targets: tweenState,
+                    lat: endLat,
+                    lon: endLon,
+                    angle: endAngle,
+                    duration,
+                    easing: 'linear',
+                    update: () => {
+                        marker.setLatLng([tweenState.lat, tweenState.lon]);
+                        const currentAngle = normalizeAngle(tweenState.angle);
+                        marker._angle = currentAngle;
+                        updateMarkerVisual(marker, status, currentAngle);
+                        setHeadingLineLatLng(icao, tweenState.lat, tweenState.lon, currentAngle);
+                    },
+                    complete: () => {
+                        marker._angle = normalizeAngle(targetAngle);
+                        updateMarkerVisual(marker, status, marker._angle);
+                        setHeadingLineLatLng(icao, endLat, endLon, marker._angle);
+                        delete aircraftMarkerAnimations[icao];
+                    },
+                });
+            }
             
             // Update or create aircraft markers
             const currentIcaos = new Set();
@@ -1541,37 +1630,16 @@
                             Math.abs(oldPos.lat - newPos[0]) > 0.0001 || 
                             Math.abs(oldPos.lng - newPos[1]) > 0.0001;
                         
-                        if (positionChanged) {
-                            existingMarker.setLatLng(newPos);
-                            // Debug: log position updates (only for first few flights to avoid spam)
-                            if (Object.keys(aircraftMarkers).indexOf(flight.icao) < 3) {
-                                console.log(`Position update: ${flight.callsign || flight.icao} - ${newPos[0].toFixed(5)}, ${newPos[1].toFixed(5)}`);
-                            }
+                        if (positionChanged && Object.keys(aircraftMarkers).indexOf(flight.icao) < 3) {
+                            console.log(`Position update: ${flight.callsign || flight.icao} - ${newPos[0].toFixed(5)}, ${newPos[1].toFixed(5)}`);
                         }
-                        
+
                         // Update flight data stored in marker (for popup updates)
                         existingMarker._flightData = flight;
                         
-                        // Update the icon with new rotation if heading/track changed
                         const status = flight.status || 'new';
-                        // Use light gray for unidentified flights, otherwise use status-based colors
-                        const color = status === 'unidentified' ? '#9ca3af' : (status === 'new' ? '#10b981' : '#3b82f6');
-                        const rotation = angle !== null ? angle : 0;
-                        
-                        const newIcon = L.divIcon({
-                            className: `aircraft-marker ${status}`,
-                            iconSize: [40, 40],
-                            html: `
-                                <div style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                                    <svg width="40" height="40" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
-                                        <g transform="rotate(${rotation} 12 12)">
-                                            <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${color}" stroke="white" stroke-width="1"/>
-                                        </g>
-                                    </svg>
-                                </div>
-                            `
-                        });
-                        existingMarker.setIcon(newIcon);
+                        const rotation = angle !== null ? angle : (existingMarker._angle ?? 0);
+                        animateMarkerMovement(existingMarker, flight, rotation, positionChanged);
                         
                         // If popup is open, update it with new flight data
                         if (existingMarker._customPopup && existingMarker._customPopup.parentNode) {
@@ -1590,15 +1658,12 @@
                             }
                         }
                         
-                        // Update or create heading line
+                        // Create heading line if missing (otherwise animation updates it continuously)
                         if (angle !== null) {
                             const endpoint = calculateHeadingEndpoint(flight.lat, flight.lon, angle, 5);
                             const linePoints = [[flight.lat, flight.lon], endpoint];
                             
-                            if (aircraftHeadingLines[flight.icao]) {
-                                // Update existing line
-                                aircraftHeadingLines[flight.icao].setLatLngs(linePoints);
-                            } else {
+                            if (!aircraftHeadingLines[flight.icao]) {
                                 // Create new heading line
                                 const headingLine = L.polyline(linePoints, {
                                     color: '#ff0000',
@@ -1613,6 +1678,7 @@
                         // Create new marker
                         const marker = createAircraftMarker(flight);
                         if (marker) {
+                            marker._angle = angle !== null ? normalizeAngle(angle) : 0;
                             marker.addTo(map);
                             aircraftMarkers[flight.icao] = marker;
                             
@@ -1643,6 +1709,10 @@
             // Remove markers and lines for flights that are no longer present
             Object.keys(aircraftMarkers).forEach(icao => {
                 if (!currentIcaos.has(icao)) {
+                    if (aircraftMarkerAnimations[icao] && typeof aircraftMarkerAnimations[icao].pause === 'function') {
+                        aircraftMarkerAnimations[icao].pause();
+                        delete aircraftMarkerAnimations[icao];
+                    }
                     const marker = aircraftMarkers[icao];
                     closeMarkerPopup(marker);
                     if (map.hasLayer(marker)) {

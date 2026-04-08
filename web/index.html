@@ -209,6 +209,10 @@
             background: var(--selected-bg);
             box-shadow: 0 8px 16px rgba(62, 145, 190, 0.3);
         }
+
+        .flight-card.is-leaving {
+            pointer-events: none;
+        }
         
         /* Boarding pass style header */
         .flight-card-header {
@@ -640,6 +644,7 @@
         </div>
     </div>
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
     <script>
         const EVENTS_URL = window.FLIGHT_TRACKER_EVENTS_URL || `${window.location.origin}/events`;
         
@@ -647,6 +652,7 @@
         let reconnectTimer = null;
         let reconnectDelay = 1000;
         const MAX_RECONNECT_DELAY = 30000;
+        const cardElementsByIcao = new Map();
         
         function updateConnectionStatus(connected, message) {
             const indicator = document.getElementById('statusIndicator');
@@ -928,32 +934,102 @@
             }
         }
         
+        function renderEmptyState(container, title, subtitle) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h2>${title}</h2>
+                    <p>${subtitle}</p>
+                </div>
+            `;
+        }
+
+        function animateCardEnter(card, index = 0) {
+            if (window.anime) {
+                anime({
+                    targets: card,
+                    opacity: [0, 1],
+                    translateY: [12, 0],
+                    scale: [0.985, 1],
+                    duration: 280,
+                    delay: Math.min(index * 35, 180),
+                    easing: 'easeOutCubic',
+                });
+                return;
+            }
+            card.style.opacity = '1';
+        }
+
+        function animateCardExit(card, onDone) {
+            card.classList.add('is-leaving');
+            if (window.anime) {
+                anime({
+                    targets: card,
+                    opacity: [1, 0],
+                    translateY: [0, -10],
+                    scale: [1, 0.985],
+                    duration: 220,
+                    easing: 'easeInCubic',
+                    complete: onDone,
+                });
+                return;
+            }
+            onDone();
+        }
+
         function updateFlights(flights, stats) {
             const container = document.getElementById('flightsContainer');
-            
+            const nextFlights = Array.isArray(flights) ? flights : [];
+            const nextIcaos = new Set(nextFlights.map(f => f.icao));
+
             // Update stats
             document.getElementById('activeFlights').textContent = stats.active || 0;
             document.getElementById('totalFlights').textContent = stats.total || 0;
-            
-            // Clear container
-            container.innerHTML = '';
-            
-            if (flights.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <h2>Skies are clear!</h2>
-                        <p>Waiting for aircraft data...</p>
-                    </div>
-                `;
-            } else {
-                flights.forEach(flight => {
-                    const card = createFlightCard(flight);
-                    container.appendChild(card);
-                });
+
+            // Remove empty state if we have active flights
+            if (nextFlights.length > 0) {
+                const emptyState = container.querySelector('.empty-state');
+                if (emptyState) {
+                    emptyState.remove();
+                }
+            }
+
+            // Animate and remove cards no longer present
+            for (const [icao, existingCard] of cardElementsByIcao.entries()) {
+                if (!nextIcaos.has(icao)) {
+                    cardElementsByIcao.delete(icao);
+                    animateCardExit(existingCard, () => {
+                        existingCard.remove();
+                        if (cardElementsByIcao.size === 0) {
+                            renderEmptyState(container, 'Skies are clear!', 'Waiting for aircraft data...');
+                        }
+                    });
+                }
+            }
+
+            // Upsert cards and keep server ordering
+            nextFlights.forEach((flight, index) => {
+                const nextCard = createFlightCard(flight);
+                const existing = cardElementsByIcao.get(flight.icao);
+
+                if (existing) {
+                    existing.replaceWith(nextCard);
+                    cardElementsByIcao.set(flight.icao, nextCard);
+                    container.appendChild(nextCard);
+                    return;
+                }
+
+                nextCard.style.opacity = '0';
+                cardElementsByIcao.set(flight.icao, nextCard);
+                container.appendChild(nextCard);
+                animateCardEnter(nextCard, index);
+            });
+
+            if (nextFlights.length === 0 && cardElementsByIcao.size === 0) {
+                renderEmptyState(container, 'Skies are clear!', 'Waiting for aircraft data...');
             }
 
             document.dispatchEvent(new CustomEvent('flights-updated', {
-                detail: { flights, stats },
+                detail: { flights: nextFlights, stats },
                 bubbles: false,
             }));
         }
