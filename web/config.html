@@ -316,6 +316,57 @@
         .nav-links a:hover {
             text-decoration: underline;
         }
+
+        .credits-section .section-content {
+            display: block;
+            max-width: 100%;
+        }
+
+        .credits-intro {
+            font-size: 0.95em;
+            color: #555;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+
+        .credits-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .credits-list li {
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+
+        .credits-list li:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .credits-list strong {
+            color: #333;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .credits-list a {
+            color: #667eea;
+            word-break: break-all;
+        }
+
+        .credits-list a:hover {
+            text-decoration: underline;
+        }
+
+        .credits-list .credit-desc {
+            color: #777;
+            font-size: 0.9em;
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body>
@@ -522,6 +573,25 @@
                                 <span class="help-text">Days of data to keep (0 = keep all)</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Credits -->
+                <div class="section credits-section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        Credits
+                    </div>
+                    <div class="section-content">
+                        <p class="credits-intro">
+                            Third-party projects used in this interface. Thank you to the authors.
+                        </p>
+                        <ul class="credits-list">
+                            <li>
+                                <strong>FlipOff</strong>
+                                <span class="credit-desc">Split-flap display UI on the flight list (card view).</span>
+                                <a href="https://github.com/magnum6actual/flipoff" target="_blank" rel="noopener noreferrer">https://github.com/magnum6actual/flipoff</a>
+                            </li>
+                        </ul>
                     </div>
                 </div>
 

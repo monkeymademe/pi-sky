@@ -14,21 +14,30 @@ function clipLine(s) {
   return t.length <= MAX_LINE ? t : t.slice(0, MAX_LINE);
 }
 
+function isValidAirportField(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return false;
+  if (/^-+$/.test(s)) return false;
+  if (/pending/i.test(s)) return false;
+  const u = s.toUpperCase();
+  if (u === '---' || u === 'N/A' || u === 'NA' || u === '?') return false;
+  if (u === 'UNKNOWN' || u === 'NONE' || u === 'TBD' || u === 'NULL') return false;
+  return true;
+}
+
+function hasFullRoute(flight) {
+  if (!flight) return false;
+  return isValidAirportField(flight.origin) && isValidAirportField(flight.destination);
+}
+
+/** Only called for flights that pass hasFullRoute */
 function buildLines(flight) {
   const cs = clipLine(flight.callsign || 'UNIDENTIFIED');
-  const origin = flight.origin ? clipLine(flight.origin) : null;
-  const dest = flight.destination ? clipLine(flight.destination) : null;
+  const origin = clipLine(flight.origin);
+  const dest = clipLine(flight.destination);
+  const routeLine = clipLine(`${origin}  ->  ${dest}`);
   const oc = flight.origin_country ? clipLine(flight.origin_country) : '';
   const dc = flight.destination_country ? clipLine(flight.destination_country) : '';
-
-  let routeLine;
-  if (origin && dest) {
-    routeLine = clipLine(`${origin}  ->  ${dest}`);
-  } else if (origin) {
-    routeLine = clipLine(`${origin}  ->  IN FLIGHT`);
-  } else {
-    routeLine = clipLine('ROUTE PENDING...');
-  }
 
   return [
     clipLine('Latest flight'),
@@ -69,20 +78,47 @@ export function initFlipoffBoard() {
     'FLIGHT DATA...',
   ]);
 
-  const initAudio = async () => {
+  const unlockAudio = async () => {
     if (!soundEngine) return;
-    await soundEngine.init();
-    soundEngine.resume();
+    await soundEngine.unlock();
   };
-  document.addEventListener('click', initAudio, { once: true });
-  document.addEventListener('keydown', initAudio, { once: true });
+
+  document.addEventListener(
+    'click',
+    () => {
+      void unlockAudio();
+    },
+    { once: true },
+  );
+  document.addEventListener(
+    'keydown',
+    () => {
+      void unlockAudio();
+    },
+    { once: true },
+  );
+
+  const flipoffSection = document.querySelector('.flipoff-section');
+  if (flipoffSection) {
+    flipoffSection.addEventListener(
+      'pointerdown',
+      () => {
+        void unlockAudio();
+      },
+      { once: true },
+    );
+  }
 
   const muteBtn = document.getElementById('flipoff-mute-btn');
   if (muteBtn) {
-    muteBtn.addEventListener('click', (e) => {
+    muteBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      initAudio();
+      if (!soundEngine) return;
+      if (!soundEngine.unlocked) {
+        await soundEngine.unlock();
+        return;
+      }
       const muted = soundEngine.toggleMute();
       muteBtn.classList.toggle('muted', muted);
       muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
@@ -99,7 +135,14 @@ export function updateFlipoffFromFlights(flights) {
     return;
   }
 
-  const sorted = [...flights].sort((a, b) => (a.seen ?? 999) - (b.seen ?? 999));
+  const routed = flights.filter(hasFullRoute);
+  if (routed.length === 0) {
+    lastSignature = '';
+    board.displayMessage(['', '', 'NO ROUTE', 'DATA YET', '']);
+    return;
+  }
+
+  const sorted = [...routed].sort((a, b) => (a.seen ?? 999) - (b.seen ?? 999));
   const latest = sorted[0];
   const sig = signature(latest);
   if (sig === lastSignature) return;
@@ -108,13 +151,13 @@ export function updateFlipoffFromFlights(flights) {
   board.displayMessage(buildLines(latest));
 }
 
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => initFlipoffBoard(), { once: true });
+} else {
+  initFlipoffBoard();
+}
+
 document.addEventListener('flights-updated', (ev) => {
   const flights = ev.detail && ev.detail.flights;
   updateFlipoffFromFlights(flights);
 });
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => initFlipoffBoard());
-} else {
-  initFlipoffBoard();
-}

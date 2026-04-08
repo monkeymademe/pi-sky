@@ -10,6 +10,8 @@ export class Board {
     this.rows = GRID_ROWS;
     this.soundEngine = soundEngine;
     this.isTransitioning = false;
+    /** @type {string[]|null} Latest message queued while animating */
+    this._pendingDisplay = null;
     this.tiles = [];
     this.currentGrid = [];
     this.accentIndex = 0;
@@ -96,44 +98,53 @@ export class Board {
   }
 
   displayMessage(lines) {
-    if (this.isTransitioning) return;
+    if (this.isTransitioning) {
+      this._pendingDisplay = lines;
+      return;
+    }
     this.isTransitioning = true;
 
-    // Format lines into grid
-    const newGrid = this._formatToGrid(lines);
-
-    // Determine which tiles need to change
     let hasChanges = false;
+    try {
+      const newGrid = this._formatToGrid(lines);
 
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        const newChar = newGrid[r][c];
-        const oldChar = this.currentGrid[r][c];
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          const newChar = newGrid[r][c];
+          const oldChar = this.currentGrid[r][c];
 
-        if (newChar !== oldChar) {
-          const delay = (r * this.cols + c) * STAGGER_DELAY;
-          this.tiles[r][c].scrambleTo(newChar, delay);
-          hasChanges = true;
+          if (newChar !== oldChar) {
+            const delay = (r * this.cols + c) * STAGGER_DELAY;
+            this.tiles[r][c].scrambleTo(newChar, delay);
+            hasChanges = true;
+          }
         }
       }
+
+      if (hasChanges && this.soundEngine) {
+        try {
+          this.soundEngine.playTransition();
+        } catch (e) {
+          console.warn('FlipOff sound:', e);
+        }
+      }
+
+      this.accentIndex++;
+      this._updateAccentColors();
+      this.currentGrid = newGrid;
+    } catch (e) {
+      console.error('FlipOff displayMessage:', e);
+    } finally {
+      const delay = hasChanges ? TOTAL_TRANSITION + 200 : 0;
+      setTimeout(() => {
+        this.isTransitioning = false;
+        if (this._pendingDisplay) {
+          const pending = this._pendingDisplay;
+          this._pendingDisplay = null;
+          this.displayMessage(pending);
+        }
+      }, delay);
     }
-
-    // Play the single transition audio clip once
-    if (hasChanges && this.soundEngine) {
-      this.soundEngine.playTransition();
-    }
-
-    // Update accent bar colors
-    this.accentIndex++;
-    this._updateAccentColors();
-
-    // Update grid state
-    this.currentGrid = newGrid;
-
-    // Clear transitioning flag after animation completes
-    setTimeout(() => {
-      this.isTransitioning = false;
-    }, TOTAL_TRANSITION + 200);
   }
 
   _formatToGrid(lines) {

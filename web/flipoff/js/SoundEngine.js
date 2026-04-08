@@ -5,32 +5,62 @@ export class SoundEngine {
     this.ctx = null;
     this.muted = false;
     this._initialized = false;
+    /** True after unlock() has run in response to a user gesture (required for playback). */
+    this._unlocked = false;
     this._audioBuffer = null;
     this._currentSource = null;
+    /** @type {Promise<void>|null} */
+    this._initPromise = null;
   }
 
+  /**
+   * Decode audio. Safe to call before user gesture; buffer is ready when promise resolves.
+   */
   async init() {
-    if (this._initialized) return;
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this._initialized = true;
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = this._doInit();
+    return this._initPromise;
+  }
 
-    // Decode the embedded audio clip
+  async _doInit() {
+    if (this._initialized) return;
     try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       const binaryStr = atob(FLAP_AUDIO_BASE64);
       const bytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) {
         bytes[i] = binaryStr.charCodeAt(i);
       }
       this._audioBuffer = await this.ctx.decodeAudioData(bytes.buffer);
+      this._initialized = true;
     } catch (e) {
       console.warn('Failed to decode flap audio:', e);
     }
   }
 
+  /**
+   * Must run from a user gesture (click/tap/key). Resumes the AudioContext so playTransition can be heard.
+   */
+  async unlock() {
+    if (this._unlocked) return;
+    await this.init();
+    if (!this.ctx || !this._audioBuffer) return;
+    try {
+      this.ctx.resume();
+    } catch (e) {
+      console.warn('AudioContext.resume:', e);
+    }
+    this._unlocked = true;
+  }
+
   resume() {
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume();
     }
+  }
+
+  get unlocked() {
+    return this._unlocked;
   }
 
   toggleMute() {
@@ -44,8 +74,10 @@ export class SoundEngine {
    * played once per message change (not per tile).
    */
   playTransition() {
-    if (!this.ctx || !this._audioBuffer || this.muted) return;
-    this.resume();
+    if (!this._unlocked || !this.ctx || !this._audioBuffer || this.muted) return;
+    if (this.ctx.state === 'suspended') {
+      void this.ctx.resume();
+    }
 
     // Stop any currently playing transition sound
     if (this._currentSource) {
