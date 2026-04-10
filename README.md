@@ -1,6 +1,6 @@
-# Flight Tracker
+# Pi-Sky
 
-A real-time flight tracking system that collects ADS-B data from dump1090 and displays it via terminal and web interface with optional map visualization.
+A real-time flight tracking system for the Raspberry Pi (and friends): it collects ADS-B data from dump1090 and shows it in a web UI with optional map visualization.
 
 ## Features
 
@@ -149,7 +149,7 @@ The card-based interface provides:
 **Main Scripts:**
 - `flight_tracker_server.py` - Unified server with map support (HTTP + WebSocket + data collection)
 - `flight_server.py` - Unified server with card-based layout (HTTP + WebSocket + data collection)
-- `flight_tracker.py` - Terminal-only flight tracker
+- `flight_tracker.py` — Terminal-only Pi-Sky / dump1090 viewer
 
 **Modules:**
 - `flight_info.py` - Route lookup utilities (adsb.lol API, OpenFlights database)

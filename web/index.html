@@ -3,51 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Tracker - Live Feed</title>
+    <title>Pi-Sky — Live feed</title>
     <link rel="stylesheet" href="flipoff/css/board.css">
     <link rel="stylesheet" href="flipoff/css/tile.css">
     <link rel="stylesheet" href="flipoff/flipoff-section.css">
     <style>
+        /* Slate palette: #1a2634 #3d5066 #5a7a8a #8ba8b8 #c9d4dc */
         :root {
-            --bg-gradient-start: #3e91be;
-            --bg-gradient-end: #cd3c65;
-            --bg-color: #f8f8f8;
-            --card-bg: white;
-            --text-primary: #333;
-            --text-secondary: #666;
-            --text-muted: #999;
-            --text-white: white;
-            --border-color: #f0f0f0;
-            --accent-color: #3e91be;
-            --accent-gradient: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
-            --header-bg: white;
-            --nav-hover: rgba(62, 145, 190, 0.1);
-            --nav-active-bg: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
-            --card-header-bg: linear-gradient(135deg, #3e91be 0%, #cd3c65 100%);
-            --card-footer-bg: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-            --route-color: #3e91be;
-            --selected-bg: #f3f4f6;
+            --palette-1: #1a2634;
+            --palette-2: #3d5066;
+            --palette-3: #5a7a8a;
+            --palette-4: #8ba8b8;
+            --palette-5: #c9d4dc;
+
+            --bg-gradient-start: var(--palette-3);
+            --bg-gradient-end: var(--palette-5);
+            --bg-color: var(--palette-5);
+            --card-bg: #ffffff;
+            --text-primary: var(--palette-1);
+            --text-secondary: var(--palette-2);
+            --text-muted: var(--palette-4);
+            --text-white: #ffffff;
+            --border-color: rgba(61, 80, 102, 0.14);
+            --accent-color: var(--palette-2);
+            --accent-gradient: linear-gradient(135deg, var(--palette-2) 0%, var(--palette-4) 100%);
+            --header-bg: #ffffff;
+            --nav-hover: rgba(61, 80, 102, 0.1);
+            --nav-active-bg: linear-gradient(135deg, var(--palette-2) 0%, var(--palette-3) 100%);
+            --card-header-bg: linear-gradient(135deg, var(--palette-2) 0%, var(--palette-3) 100%);
+            --card-footer-bg: linear-gradient(135deg, var(--palette-5) 0%, rgba(201, 212, 220, 0.55) 100%);
+            --route-color: var(--palette-2);
+            --selected-bg: rgba(201, 212, 220, 0.55);
         }
 
         [data-theme="dark"] {
-            --bg-gradient-start: #6b6a6a;
-            --bg-gradient-end: #cd3c65;
-            --bg-color: #0f1419;
-            --card-bg: #1a1f2e;
-            --text-primary: #e0e0e0;
-            --text-secondary: #b0b0b0;
-            --text-muted: #808080;
-            --text-white: #e0e0e0;
-            --border-color: #2a2f3e;
-            --accent-color: #5ba8d1;
-            --accent-gradient: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
-            --header-bg: #1a1f2e;
-            --nav-hover: rgba(91, 168, 209, 0.2);
-            --nav-active-bg: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
-            --card-header-bg: linear-gradient(135deg, #5ba8d1 0%, #cd3c65 100%);
-            --card-footer-bg: linear-gradient(135deg, #2a2f3e 0%, #1f2532 100%);
-            --route-color: #5ba8d1;
-            --selected-bg: #2a2f3e;
+            --bg-gradient-start: var(--palette-2);
+            --bg-gradient-end: var(--palette-1);
+            --bg-color: var(--palette-1);
+            --card-bg: var(--palette-2);
+            --text-primary: var(--palette-5);
+            --text-secondary: var(--palette-4);
+            --text-muted: var(--palette-3);
+            --text-white: var(--palette-5);
+            --border-color: rgba(139, 168, 184, 0.22);
+            --accent-color: var(--palette-4);
+            --accent-gradient: linear-gradient(135deg, var(--palette-3) 0%, var(--palette-2) 100%);
+            --header-bg: var(--palette-1);
+            --nav-hover: rgba(139, 168, 184, 0.14);
+            --nav-active-bg: linear-gradient(135deg, var(--palette-3) 0%, var(--palette-2) 100%);
+            --card-header-bg: linear-gradient(135deg, var(--palette-3) 0%, var(--palette-2) 100%);
+            --card-footer-bg: linear-gradient(135deg, var(--palette-1) 0%, #152433 100%);
+            --route-color: var(--palette-4);
+            --selected-bg: rgba(90, 122, 138, 0.35);
         }
 
         * {
@@ -109,19 +116,19 @@
         }
 
         [data-theme="dark"] .nav-links a {
-            background: rgba(26, 31, 46, 0.6);
+            background: rgba(26, 38, 52, 0.55);
         }
 
         .nav-links a:hover {
             background: var(--nav-hover);
             color: var(--accent-color);
-            box-shadow: 0 4px 8px rgba(62, 145, 190, 0.15);
+            box-shadow: 0 4px 8px rgba(61, 80, 102, 0.18);
         }
 
         .nav-links a.active {
             background: var(--nav-active-bg);
             color: var(--text-white);
-            box-shadow: 0 6px 12px rgba(62, 145, 190, 0.3);
+            box-shadow: 0 6px 12px rgba(61, 80, 102, 0.32);
         }
 
         .status {
@@ -139,12 +146,12 @@
         }
         
         .status-indicator.connected {
-            background: #10b981;
-            box-shadow: 0 0 10px #10b981;
+            background: var(--palette-3);
+            box-shadow: 0 0 10px var(--palette-4);
         }
         
         .status-indicator.disconnected {
-            background: #ef4444;
+            background: var(--palette-2);
         }
         
         .stats {
@@ -194,20 +201,20 @@
         }
         
         .flight-card.new {
-            border-top: 4px solid #10b981;
+            border-top: 4px solid var(--palette-4);
         }
         
         .flight-card.saved {
-            border-top: 4px solid #3b82f6;
+            border-top: 4px solid var(--palette-3);
         }
         
         .flight-card.unidentified {
-            border-top: 4px solid #9ca3af;
+            border-top: 4px solid var(--palette-5);
         }
         
         .flight-card.selected {
             background: var(--selected-bg);
-            box-shadow: 0 8px 16px rgba(62, 145, 190, 0.3);
+            box-shadow: 0 8px 16px rgba(61, 80, 102, 0.28);
         }
 
         .flight-card.is-leaving {
@@ -267,7 +274,7 @@
         .route-section-label {
             font-size: 0.7em;
             text-transform: uppercase;
-            color: #9ca3af;
+            color: var(--text-muted);
             letter-spacing: 0.5px;
             margin-bottom: 8px;
         }
@@ -303,7 +310,7 @@
             width: 100%;
             height: 2px;
             background: linear-gradient(to right, var(--route-color) 0%, transparent 50%, var(--route-color) 100%);
-            border-top: 1px dashed rgba(62, 145, 190, 0.3);
+            border-top: 1px dashed rgba(90, 122, 138, 0.35);
         }
         
         .route-plane-icon {
@@ -371,7 +378,7 @@
             height: 40px;
             object-fit: contain;
             border-radius: 4px;
-            background: #f3f4f6;
+            background: var(--palette-5);
             padding: 4px;
             image-rendering: -webkit-optimize-contrast;
             image-rendering: crisp-edges;
@@ -380,12 +387,12 @@
         .flight-callsign {
             font-size: 1.5em;
             font-weight: bold;
-            color: #333;
+            color: var(--text-primary);
         }
         
         .flight-icao {
             font-size: 0.9em;
-            color: #666;
+            color: var(--text-secondary);
             font-family: monospace;
         }
         
@@ -399,22 +406,22 @@
         }
         
         .flight-status.new {
-            background: #d1fae5;
-            color: #065f46;
+            background: rgba(139, 168, 184, 0.35);
+            color: var(--palette-1);
         }
         
         .flight-status.saved {
-            background: #dbeafe;
-            color: #1e40af;
+            background: rgba(90, 122, 138, 0.28);
+            color: var(--palette-1);
         }
         
         .flight-route {
             font-size: 1.2em;
             font-weight: bold;
-            color: #667eea;
+            color: var(--route-color);
             margin: 10px 0;
             padding: 12px;
-            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            background: linear-gradient(135deg, var(--palette-5) 0%, rgba(201, 212, 220, 0.65) 100%);
             border-radius: 8px;
             line-height: 1.8;
         }
@@ -427,7 +434,7 @@
             font-size: 1.1em;
             font-weight: bold;
             margin-bottom: 6px;
-            color: #667eea;
+            color: var(--route-color);
         }
         
         .flight-route .route-countries {
@@ -437,7 +444,7 @@
             gap: 12px;
             font-size: 0.9em;
             font-weight: normal;
-            color: #6b7280;
+            color: var(--text-secondary);
             line-height: 1.5;
             margin-top: 4px;
         }
@@ -450,19 +457,19 @@
         
         .flight-route .route-separator {
             flex: 0 0 auto;
-            color: #667eea;
+            color: var(--route-color);
             font-weight: bold;
         }
         
         .flight-route .route-countries .route-separator {
-            color: #9ca3af;
+            color: var(--text-muted);
             font-weight: normal;
         }
         
         .country-name {
             font-size: 0.75em;
             font-weight: normal;
-            color: #6b7280;
+            color: var(--text-secondary);
             margin-left: 4px;
             font-style: italic;
         }
@@ -479,14 +486,14 @@
         }
         
         .detail-label {
-            color: #666;
+            color: var(--text-secondary);
             font-size: 0.85em;
             margin-bottom: 4px;
         }
         
         .detail-value {
             font-weight: bold;
-            color: #333;
+            color: var(--text-primary);
         }
         
         .empty-state {
@@ -584,7 +591,7 @@
     <div class="container">
         <div class="header">
             <div>
-                <h1>✈️ Flight List</h1>
+                <h1>✈️ Pi-Sky</h1>
             </div>
             <div class="nav-links">
                 <a href="index.html" class="active">Flight List</a>
@@ -639,7 +646,7 @@
         <div id="flightsContainer" class="flights-grid">
             <div class="empty-state">
                 <h2>Waiting for flight data...</h2>
-                <p>Connecting to flight tracker...</p>
+                <p>Connecting to Pi-Sky…</p>
             </div>
         </div>
     </div>
@@ -802,7 +809,7 @@
             // A flight can have a route even if it was initially unidentified
             const hasRoute = flight.origin && flight.destination;
             const isUnidentified = !flight.callsign || flight.callsign === 'Unidentified' || (!hasRoute && flight.status === 'unidentified');
-            const routeColor = isUnidentified ? '#9ca3af' : (getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3e91be');
+            const routeColor = isUnidentified ? '#8ba8b8' : (getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3d5066');
             const planeIcon = `
                 <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${routeColor}"/>

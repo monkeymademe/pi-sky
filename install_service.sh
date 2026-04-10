@@ -8,7 +8,7 @@ SERVICE_FILE="flight-tracker.service"
 PROJECT_DIR="/home/pi/berrybase_demos/flightaware_demo"
 SYSTEMD_DIR="/etc/systemd/system"
 
-echo "Installing Flight Tracker service..."
+echo "Installing Pi-Sky service..."
 
 # Check if running as root or with sudo
 if [ "$EUID" -ne 0 ]; then 

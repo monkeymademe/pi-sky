@@ -49,4 +49,10 @@ test_data/
 *.db
 *.sqlite
 flights.db
+# SQLite WAL mode sidecar files
+*.db-shm
+*.db-wal
+
+# Generated Inky display output (runtime)
+inky_ready.png
 

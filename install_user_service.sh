@@ -9,7 +9,7 @@ SERVICE_FILE="flight-tracker-user.service"
 PROJECT_DIR="/home/pi/berrybase_demos/flightaware_demo"
 USER_SYSTEMD_DIR="$HOME/.config/systemd/user"
 
-echo "Installing Flight Tracker as a user service..."
+echo "Installing Pi-Sky as a user service..."
 
 # Check if service file exists
 if [ ! -f "$PROJECT_DIR/$SERVICE_FILE" ]; then

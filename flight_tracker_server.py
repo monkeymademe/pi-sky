@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified Flight Tracker Server with Map Support
+Pi-Sky — ADS-B flight tracker server (web UI + maps)
 Combines flight data collection, HTTP server, and WebSocket broadcasting
 Serves a map-enabled web interface
 """
@@ -2109,7 +2109,7 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     
                     # Draw flight path
                     if len(path_points) > 1:
-                        draw.line(path_points, fill='#3e91be', width=3)
+                        draw.line(path_points, fill='#5a7a8a', width=3)
                     
                     # Draw start marker (green circle)
                     if path_points:
@@ -2872,7 +2872,7 @@ async def main():
     http_port = config.get('http_port', 8080)
     
     print("=" * 70)
-    print("Flight Tracker Server (with Maps)")
+    print("Pi-Sky server")
     print("=" * 70)
     print()
     

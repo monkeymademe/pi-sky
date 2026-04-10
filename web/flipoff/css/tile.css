@@ -3,7 +3,7 @@
   width: var(--tile-size);
   height: var(--tile-size);
   perspective: 400px;
-  background: #111;
+  background: #1a2634;
   border-radius: 3px;
 }
 
@@ -21,7 +21,7 @@
   position: absolute;
   inset: 1px;
   backface-visibility: hidden;
-  background: #222;
+  background: #2a3a4a;
   border-radius: 2px;
   display: flex;
   align-items: center;

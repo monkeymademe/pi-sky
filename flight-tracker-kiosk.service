@@ -1,5 +1,5 @@
 [Unit]
-Description=Flight Tracker Kiosk Mode
+Description=Pi-Sky kiosk (fullscreen browser)
 After=network.target flight-tracker.service
 Wants=flight-tracker.service
 

@@ -8,7 +8,7 @@ SERVICE_FILE="flight-tracker-kiosk.service"
 PROJECT_DIR="/home/pi/berrybase_demos/flightaware_demo"
 SYSTEMD_DIR="/etc/systemd/system"
 
-echo "Installing Flight Tracker Kiosk service..."
+echo "Installing Pi-Sky kiosk service..."
 
 # Check if running as root or with sudo
 if [ "$EUID" -ne 0 ]; then 

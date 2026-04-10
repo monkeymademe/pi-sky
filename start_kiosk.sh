@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to start Flight Tracker in kiosk mode
+# Script to start Pi-Sky in kiosk mode
 # This opens Chromium in fullscreen kiosk mode
 
 # Get the server URL from config.json or use default
@@ -22,7 +22,7 @@ fi
 # Construct the URL
 URL="http://${HTTP_HOST}:${HTTP_PORT}/index-maps.html"
 
-echo "Starting Flight Tracker in kiosk mode..."
+echo "Starting Pi-Sky in kiosk mode..."
 echo "URL: $URL"
 
 # Disable screen blanking

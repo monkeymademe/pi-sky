@@ -1,5 +1,5 @@
 [Unit]
-Description=Flight Tracker Server
+Description=Pi-Sky server
 After=network.target
 
 [Service]

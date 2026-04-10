@@ -4,7 +4,7 @@
   --tile-gap: clamp(3px, 0.3vw, 5px);
 
   position: relative;
-  background: #1A1A1A;
+  background: #1a2634;
   border-radius: 16px;
   padding: 28px 48px 40px;
   width: 100%;

@@ -3,8 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flight Tracker - Configuration</title>
+    <title>Pi-Sky — Configuration</title>
     <style>
+        /* Slate palette (shared across Pi-Sky pages) */
+        :root {
+            --palette-1: #1a2634;
+            --palette-2: #3d5066;
+            --palette-3: #5a7a8a;
+            --palette-4: #8ba8b8;
+            --palette-5: #c9d4dc;
+
+            --bg-gradient-start: var(--palette-3);
+            --bg-gradient-end: var(--palette-5);
+            --bg-color: var(--palette-5);
+            --card-bg: #ffffff;
+            --text-primary: var(--palette-1);
+            --text-secondary: var(--palette-2);
+            --text-muted: var(--palette-4);
+            --text-white: #ffffff;
+            --border-color: rgba(61, 80, 102, 0.14);
+            --accent-color: var(--palette-2);
+            --accent-gradient: linear-gradient(135deg, var(--palette-2) 0%, var(--palette-4) 100%);
+            --header-bg: #ffffff;
+            --nav-hover: rgba(61, 80, 102, 0.1);
+            --nav-active-bg: linear-gradient(135deg, var(--palette-2) 0%, var(--palette-3) 100%);
+            --selected-bg: rgba(201, 212, 220, 0.55);
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: var(--palette-2);
+            --bg-gradient-end: var(--palette-1);
+            --bg-color: var(--palette-1);
+            --card-bg: var(--palette-2);
+            --text-primary: var(--palette-5);
+            --text-secondary: var(--palette-4);
+            --text-muted: var(--palette-3);
+            --text-white: var(--palette-5);
+            --border-color: rgba(139, 168, 184, 0.22);
+            --accent-color: var(--palette-4);
+            --accent-gradient: linear-gradient(135deg, var(--palette-3) 0%, var(--palette-2) 100%);
+            --header-bg: var(--palette-1);
+            --nav-hover: rgba(139, 168, 184, 0.14);
+            --nav-active-bg: linear-gradient(135deg, var(--palette-3) 0%, var(--palette-2) 100%);
+            --selected-bg: rgba(90, 122, 138, 0.35);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,62 +56,218 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
             min-height: 100vh;
             padding: 20px;
-            color: #333;
+            color: var(--text-primary);
+            transition: background 0.3s ease, color 0.3s ease;
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1400px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            overflow: hidden;
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
+            background: var(--header-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            transition: background 0.3s ease;
         }
 
         .header h1 {
+            color: var(--accent-color);
             font-size: 2em;
-            margin-bottom: 10px;
+            transition: color 0.3s ease;
         }
 
-        .header p {
-            opacity: 0.9;
+        .nav-links {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
-        .content {
-            padding: 30px;
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.6);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="dark"] .nav-links a {
+            background: rgba(26, 38, 52, 0.55);
+        }
+
+        .nav-links a:hover {
+            background: var(--nav-hover);
+            color: var(--accent-color);
+            box-shadow: 0 4px 8px rgba(61, 80, 102, 0.18);
+        }
+
+        .nav-links a.active {
+            background: var(--nav-active-bg);
+            color: var(--text-white);
+            box-shadow: 0 6px 12px rgba(61, 80, 102, 0.32);
+        }
+
+        .status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-indicator.connected {
+            background: var(--palette-3);
+            box-shadow: 0 0 10px var(--palette-4);
+        }
+
+        .status-indicator.disconnected {
+            background: var(--palette-2);
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+            font-size: 0.9em;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: var(--accent-color);
+            transition: color 0.3s ease;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            transition: color 0.3s ease;
+        }
+
+        .theme-toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .theme-toggle-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            transition: color 0.3s ease;
+        }
+
+        .theme-toggle-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        .theme-toggle {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: var(--border-color);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            border: 2px solid var(--border-color);
+        }
+
+        .theme-toggle.active {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        .theme-toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .theme-toggle.active .theme-toggle-slider {
+            transform: translateX(24px);
+        }
+
+        .theme-toggle:hover {
+            opacity: 0.8;
+        }
+
+        .config-main {
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            padding: 28px 30px 30px;
+            transition: background 0.3s ease;
+        }
+
+        .config-intro {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-size: 1em;
+            line-height: 1.5;
         }
 
         .section {
             margin-bottom: 30px;
-            border: 1px solid #e0e0e0;
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             overflow: hidden;
         }
 
         .section-header {
-            background: #f5f5f5;
+            background: var(--selected-bg);
             padding: 15px 20px;
             font-weight: 600;
             font-size: 1.1em;
-            border-bottom: 1px solid #e0e0e0;
+            border-bottom: 1px solid var(--border-color);
             cursor: pointer;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            color: var(--text-primary);
+            transition: background 0.2s ease;
         }
 
         .section-header:hover {
-            background: #eeeeee;
+            filter: brightness(0.97);
+        }
+
+        [data-theme="dark"] .section-header:hover {
+            filter: brightness(1.08);
         }
 
         .section-header::after {
@@ -103,7 +302,7 @@
         label {
             font-weight: 500;
             margin-bottom: 5px;
-            color: #555;
+            color: var(--text-secondary);
             font-size: 0.9em;
         }
 
@@ -111,17 +310,19 @@
         input[type="number"],
         input[type="url"] {
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--border-color);
             border-radius: 4px;
             font-size: 1em;
             transition: border-color 0.3s;
+            background: var(--card-bg);
+            color: var(--text-primary);
         }
 
         input[type="text"]:focus,
         input[type="number"]:focus,
         input[type="url"]:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--accent-color);
         }
 
         input[type="checkbox"] {
@@ -138,14 +339,14 @@
 
         .help-text {
             font-size: 0.85em;
-            color: #777;
+            color: var(--text-muted);
             margin-top: 5px;
         }
 
         .horizontal-rule {
             grid-column: 1 / -1;
             height: 1px;
-            background: #e0e0e0;
+            background: var(--border-color);
             margin: 15px 0;
         }
 
@@ -169,7 +370,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #ccc;
+            background-color: var(--text-muted);
             transition: .4s;
             border-radius: 24px;
         }
@@ -187,7 +388,7 @@
         }
 
         .toggle-switch input:checked + .toggle-slider {
-            background-color: #667eea;
+            background-color: var(--accent-color);
         }
 
         .toggle-switch input:checked + .toggle-slider:before {
@@ -210,7 +411,7 @@
         .toggle-item label {
             margin: 0;
             font-weight: 500;
-            color: #555;
+            color: var(--text-secondary);
             cursor: pointer;
         }
 
@@ -225,8 +426,9 @@
             display: flex;
             gap: 10px;
             justify-content: flex-end;
+            flex-wrap: wrap;
             padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+            border-top: 1px solid var(--border-color);
             margin-top: 20px;
         }
 
@@ -241,55 +443,64 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--accent-gradient);
+            color: var(--text-white);
         }
 
         .btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 12px rgba(61, 80, 102, 0.35);
         }
 
         .btn-secondary {
-            background: #f5f5f5;
-            color: #333;
+            background: var(--selected-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
         }
 
         .btn-secondary:hover {
-            background: #e0e0e0;
+            filter: brightness(0.95);
         }
 
-        .status {
+        [data-theme="dark"] .btn-secondary:hover {
+            filter: brightness(1.1);
+        }
+
+        .config-feedback {
             padding: 15px;
             border-radius: 6px;
             margin-bottom: 20px;
             display: none;
         }
 
-        .status.success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .config-feedback.success {
+            background: rgba(90, 122, 138, 0.2);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
         }
 
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+        .config-feedback.error {
+            background: rgba(61, 80, 102, 0.15);
+            color: var(--palette-1);
+            border: 1px solid var(--palette-2);
         }
 
-        .status.info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
+        [data-theme="dark"] .config-feedback.error {
+            color: var(--palette-5);
+        }
+
+        .config-feedback.info {
+            background: rgba(139, 168, 184, 0.2);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
         }
 
         .loading {
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #667eea;
+            border: 2px solid var(--border-color);
+            border-top: 2px solid var(--accent-color);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-left: 10px;
@@ -300,23 +511,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        .nav-links {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .nav-links a {
-            color: #667eea;
-            text-decoration: none;
-            margin: 0 15px;
-        }
-
-        .nav-links a:hover {
-            text-decoration: underline;
-        }
-
         .credits-section .section-content {
             display: block;
             max-width: 100%;
@@ -324,7 +518,7 @@
 
         .credits-intro {
             font-size: 0.95em;
-            color: #555;
+            color: var(--text-secondary);
             margin-bottom: 16px;
             line-height: 1.5;
         }
@@ -337,7 +531,7 @@
 
         .credits-list li {
             padding: 12px 0;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid var(--border-color);
             font-size: 0.95em;
             line-height: 1.5;
         }
@@ -348,13 +542,13 @@
         }
 
         .credits-list strong {
-            color: #333;
+            color: var(--text-primary);
             display: block;
             margin-bottom: 4px;
         }
 
         .credits-list a {
-            color: #667eea;
+            color: var(--accent-color);
             word-break: break-all;
         }
 
@@ -363,7 +557,7 @@
         }
 
         .credits-list .credit-desc {
-            color: #777;
+            color: var(--text-muted);
             font-size: 0.9em;
             margin-top: 4px;
         }
@@ -372,12 +566,46 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>⚙️ Configuration</h1>
-            <p>Manage your flight tracker settings</p>
+            <div>
+                <h1>⚙️ Pi-Sky · Config</h1>
+            </div>
+            <div class="nav-links">
+                <a href="index.html">Flight List</a>
+                <a href="index-maps.html">Flight Map</a>
+                <a href="index-replay.html">History</a>
+                <a href="config.html" class="active">⚙️ Config</a>
+            </div>
+            <div class="status">
+                <div>
+                    <span class="status-indicator disconnected" id="statusIndicator"></span>
+                    <span id="connectionStatus">Disconnected</span>
+                </div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="activeFlights">0</div>
+                        <div class="stat-label">Active Flights</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="totalFlights">0</div>
+                        <div class="stat-label">Total Detected</div>
+                    </div>
+                </div>
+            </div>
+            <div class="theme-toggle-container">
+                <div class="theme-toggle-icon" id="themeIcon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                        <path id="themeIconPath" d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
+                    </svg>
+                </div>
+                <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                    <div class="theme-toggle-slider"></div>
+                </div>
+            </div>
         </div>
 
-        <div class="content">
-            <div id="status" class="status"></div>
+        <div class="config-main">
+            <p class="config-intro">Manage your Pi-Sky receiver and server settings.</p>
+            <div id="configFeedback" class="config-feedback"></div>
 
             <form id="configForm">
                 <!-- Receiver Settings -->
@@ -597,48 +825,143 @@
 
                 <div class="actions">
                     <button type="button" class="btn-secondary" onclick="loadConfig()">Reset</button>
-                    <button type="button" class="btn-secondary" onclick="testSetValue()" style="background: #ff9800; color: white;">Test Set Value</button>
                     <button type="submit" class="btn-primary">Save Configuration</button>
                 </div>
             </form>
-
-            <div class="nav-links">
-                <a href="index-maps.html">Map View</a>
-                <a href="index.html">Card View</a>
-                <a href="index-replay.html">Replay</a>
-            </div>
         </div>
     </div>
 
     <script>
+        const EVENTS_URL = window.FLIGHT_TRACKER_EVENTS_URL || `${window.location.origin}/events`;
+        let eventSource = null;
+        let reconnectTimer = null;
+        let reconnectDelay = 1000;
+        const MAX_RECONNECT_DELAY = 30000;
+
+        function updateConnectionStatus(connected, message) {
+            const indicator = document.getElementById('statusIndicator');
+            const status = document.getElementById('connectionStatus');
+            if (!indicator || !status) return;
+            if (connected) {
+                indicator.className = 'status-indicator connected';
+                status.textContent = message || 'Connected';
+            } else {
+                indicator.className = 'status-indicator disconnected';
+                status.textContent = message || 'Disconnected';
+            }
+        }
+
+        function updateStats(stats) {
+            if (stats.active !== undefined) {
+                const el = document.getElementById('activeFlights');
+                if (el) el.textContent = stats.active || 0;
+            }
+            if (stats.total !== undefined) {
+                const el = document.getElementById('totalFlights');
+                if (el) el.textContent = stats.total || 0;
+            }
+        }
+
+        function scheduleReconnect() {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(() => {
+                connectToEventStream();
+            }, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+        }
+
+        function connectToEventStream() {
+            if (eventSource) return;
+            updateConnectionStatus(false, 'Connecting...');
+            try {
+                eventSource = new EventSource(EVENTS_URL);
+                eventSource.onopen = () => {
+                    updateConnectionStatus(true);
+                    reconnectDelay = 1000;
+                    if (reconnectTimer) {
+                        clearTimeout(reconnectTimer);
+                        reconnectTimer = null;
+                    }
+                };
+                eventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'flight_update') {
+                            updateStats(data.stats || {});
+                        }
+                    } catch (e) {
+                        console.error('Error parsing SSE message:', e);
+                    }
+                };
+                eventSource.onerror = () => {
+                    updateConnectionStatus(false, 'Disconnected (retrying...)');
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    scheduleReconnect();
+                };
+            } catch (error) {
+                console.error('SSE connection error:', error);
+                updateConnectionStatus(false, 'Connection error');
+                scheduleReconnect();
+            }
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) eventSource.close();
+        });
+
+        connectToEventStream();
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeToggle(newTheme);
+        }
+
+        function updateThemeToggle(theme) {
+            const toggle = document.getElementById('themeToggle');
+            const iconPath = document.getElementById('themeIconPath');
+            if (!toggle || !iconPath) return;
+            if (theme === 'dark') {
+                toggle.classList.add('active');
+                iconPath.setAttribute('d', 'M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0m0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13m8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5M3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8m10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0m-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0m9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707M4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .708');
+            } else {
+                toggle.classList.remove('active');
+                iconPath.setAttribute('d', 'M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278');
+            }
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeToggle(savedTheme);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTheme);
+        } else {
+            initTheme();
+        }
+
         function toggleSection(header) {
             header.classList.toggle('collapsed');
             const content = header.nextElementSibling;
             content.classList.toggle('collapsed');
         }
-        
-        function testSetValue() {
-            console.log('[TEST] Testing direct value setting...');
-            const el = document.getElementById('dump1090_url');
-            if (el) {
-                console.log('[TEST] Element found, current value:', el.value);
-                el.value = 'http://test.example.com/data/aircraft.json';
-                console.log('[TEST] Value set to:', el.value);
-                console.log('[TEST] Element.value after setting:', el.value);
-                showStatus('Test: Value should be set to test URL', 'info');
-            } else {
-                console.error('[TEST] Element NOT FOUND!');
-                showStatus('Test: Element not found!', 'error');
-            }
-        }
 
         function showStatus(message, type) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = `status ${type}`;
-            status.style.display = 'block';
+            const el = document.getElementById('configFeedback');
+            if (!el) return;
+            el.textContent = message;
+            el.className = `config-feedback ${type}`;
+            el.style.display = 'block';
             setTimeout(() => {
-                status.style.display = 'none';
+                el.style.display = 'none';
             }, 5000);
         }
 
