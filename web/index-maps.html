@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi-Sky — Map</title>
+    <link rel="icon" href="assets/pi-sky-mark.svg" type="image/svg+xml">
     
         <!-- Leaflet CSS -->
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -129,6 +130,25 @@
             color: var(--accent-color);
             font-size: 2em;
             transition: color 0.3s ease;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-brand h1 {
+            margin: 0;
+            line-height: 1.15;
+        }
+
+        .header-brand img {
+            flex-shrink: 0;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
         }
         
         .nav-links {
@@ -652,8 +672,9 @@
 <body>
     <div class="container">
         <div class="header">
-            <div>
-                <h1>✈️ Pi-Sky · Map</h1>
+            <div class="header-brand">
+                <img src="assets/pi-sky-mark.svg" width="44" height="44" alt="" decoding="async">
+                <h1>Pi-Sky · Map</h1>
             </div>
             <div class="nav-links">
                 <a href="index.html">Flight List</a>
