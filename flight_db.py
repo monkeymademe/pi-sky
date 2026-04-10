@@ -1135,6 +1135,60 @@ class FlightDatabase:
                 except:
                     pass
     
+    def get_positions_for_flight_ids(self, flight_ids):
+        """
+        Load positions for many flights in a single query (for overview map batch load).
+
+        Args:
+            flight_ids: List of integer flight IDs
+
+        Returns:
+            dict mapping flight_id -> list of position dicts (same fields as get_flight_positions)
+        """
+        if not flight_ids:
+            return {}
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=10.0)
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            placeholders = ','.join('?' * len(flight_ids))
+            query = f'''
+                SELECT flight_id, ts, lat, lon, altitude, speed, track, heading,
+                       vertical_rate, squawk, distance
+                FROM positions
+                WHERE flight_id IN ({placeholders})
+                ORDER BY flight_id, ts
+            '''
+            cursor.execute(query, flight_ids)
+            out = {int(fid): [] for fid in flight_ids}
+            for row in cursor.fetchall():
+                fid = int(row['flight_id'])
+                pos = {
+                    'ts': row['ts'],
+                    'lat': row['lat'],
+                    'lon': row['lon'],
+                    'altitude': row['altitude'],
+                    'speed': row['speed'],
+                    'track': row['track'],
+                    'heading': row['heading'],
+                    'vertical_rate': row['vertical_rate'],
+                    'squawk': row['squawk'],
+                    'distance': row['distance'],
+                }
+                out.setdefault(fid, []).append(pos)
+            return out
+        except Exception as e:
+            print(f"      ✗ Error in get_positions_for_flight_ids(): {e}")
+            return {}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    
     def get_aircraft_flights(self, icao, limit=None):
         """
         Get all flights for an aircraft

@@ -725,6 +725,7 @@
         }
         
         .flight-map-container {
+            position: relative;
             flex: 1;
             min-width: 400px;
             border-radius: 8px;
@@ -732,6 +733,34 @@
             border: 1px solid var(--border-color);
             height: 300px;
             background: var(--card-bg);
+        }
+
+        .flight-map-replay-btn {
+            display: none;
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 700;
+            padding: 6px 14px;
+            font-size: 0.85em;
+            font-weight: 600;
+            font-family: inherit;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--accent-color);
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            transition: background 0.2s ease, transform 0.15s ease;
+        }
+
+        .flight-map-replay-btn:hover {
+            background: var(--selected-bg);
+            transform: translateY(-1px);
+        }
+
+        .flight-map-replay-btn:active {
+            transform: translateY(0);
         }
         
         .flight-map {
@@ -1085,6 +1114,7 @@
             <h2>All Flights Map</h2>
             <div class="overview-map-container">
                 <div class="overview-map" id="overviewMap"></div>
+                <button type="button" class="flight-map-replay-btn" id="overviewMapReplayBtn" onclick="replayOverviewPathAnimations()" title="Replay path animations" aria-label="Replay path animations" style="display: none;">↻ Replay</button>
             </div>
             <div class="map-filter-controls" id="mapFilterControls">
                 <div class="filter-row">
@@ -1121,6 +1151,291 @@
     <script>
         let flights = [];
         const flightMaps = {}; // Store flight maps
+
+        window.__flightPathPlay = window.__flightPathPlay || {};
+        window.replayFlightPathAnimation = function (flightId) {
+            const play = window.__flightPathPlay[flightId];
+            if (typeof play === 'function') play();
+        };
+
+        function calculateBearing(a, b) {
+            const lat1 = (a[0] * Math.PI) / 180;
+            const lat2 = (b[0] * Math.PI) / 180;
+            const dLon = ((b[1] - a[1]) * Math.PI) / 180;
+            const y = Math.sin(dLon) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+            let brng = (Math.atan2(y, x) * 180) / Math.PI;
+            brng = (brng + 360) % 360;
+            return brng;
+        }
+
+        function buildPathDistanceMeta(pathArr, leafletMap) {
+            const layerPts = pathArr.map(([lat, lon]) =>
+                leafletMap.latLngToLayerPoint(L.latLng(lat, lon))
+            );
+            const cum = [0];
+            for (let i = 1; i < layerPts.length; i++) {
+                cum.push(cum[i - 1] + layerPts[i].distanceTo(layerPts[i - 1]));
+            }
+            const total = cum[cum.length - 1] || 0;
+            return { layerPts, cum, total };
+        }
+
+        function latLngAtPathDistance(meta, pathArr, dist, leafletMap) {
+            const { layerPts, cum, total } = meta;
+            if (total <= 0 || layerPts.length === 0) return pathArr[0];
+            const d = Math.max(0, Math.min(dist, total));
+            if (d <= 0) return pathArr[0];
+            let i = 0;
+            while (i < cum.length - 1 && cum[i + 1] < d) {
+                i++;
+            }
+            const d0 = cum[i];
+            const d1 = cum[i + 1];
+            const seg = (d1 - d0) || 1e-9;
+            const t = (d - d0) / seg;
+            const p0 = layerPts[i];
+            const p1 = layerPts[i + 1];
+            const x = p0.x + t * (p1.x - p0.x);
+            const y = p0.y + t * (p1.y - p0.y);
+            const ll = leafletMap.layerPointToLatLng(L.point(x, y));
+            return [ll.lat, ll.lng];
+        }
+
+        function bearingAlongPath(meta, dist, pathArr, leafletMap) {
+            const { total } = meta;
+            const span = Math.max(total * 0.025, 14);
+            const d0 = Math.min(total, Math.max(0, dist - span * 0.35));
+            const d1 = Math.min(total, Math.max(0, dist + span * 0.65));
+            if (d1 - d0 < 0.5) {
+                const n = pathArr.length;
+                if (n >= 2) return calculateBearing(pathArr[n - 2], pathArr[n - 1]);
+                return 0;
+            }
+            const a = latLngAtPathDistance(meta, pathArr, d0, leafletMap);
+            const b = latLngAtPathDistance(meta, pathArr, d1, leafletMap);
+            return calculateBearing(a, b);
+        }
+
+        /**
+         * Dash reveal + plane marker along a polyline. Reuse on per-flight map and overview map.
+         * options: planeFill, hidePlaneDelay, durationFn(nPoints, pathMeta)
+         */
+        function createPathPlaneAnimator(map, polyline, pathArr, options) {
+            options = options || {};
+            const planeFill = options.planeFill || '#ff8c00';
+            const hidePlaneDelay = options.hidePlaneDelay !== undefined ? options.hidePlaneDelay : 650;
+            const durationFn = options.durationFn || function (n) {
+                return Math.max(650, Math.min(2600, 420 + n * 15));
+            };
+
+            let pathAnimState = {
+                hideTimer: null,
+                sync: null,
+                planeMarker: null
+            };
+            /** Kept after each successful measure so cancel/replay can hide the stroke even if redraw() clears dash styles briefly. */
+            let lastDashLen = 0;
+
+            function getPathSvgEl() {
+                return polyline.getElement ? polyline.getElement() : polyline._path;
+            }
+
+            function measureDashLength() {
+                const el = getPathSvgEl();
+                if (!el || typeof el.getTotalLength !== 'function') return 0;
+                try {
+                    const len = el.getTotalLength();
+                    return Number.isFinite(len) && len > 0 ? len : 0;
+                } catch (e) {
+                    return 0;
+                }
+            }
+
+            /** Leaflet sets stroke via SVG; set both style and attributes so dash-offset reliably paints. */
+            function applyDashState(len, offset) {
+                const el = getPathSvgEl();
+                if (!el || len <= 0) return;
+                el.style.strokeDasharray = String(len);
+                el.style.strokeDashoffset = String(offset);
+                el.setAttribute('stroke-dasharray', String(len));
+                el.setAttribute('stroke-dashoffset', String(offset));
+            }
+
+            function cancel() {
+                if (pathAnimState.hideTimer) {
+                    clearTimeout(pathAnimState.hideTimer);
+                    pathAnimState.hideTimer = null;
+                }
+                if (pathAnimState.sync) {
+                    try {
+                        anime.remove(pathAnimState.sync);
+                    } catch (e) { /* ignore */ }
+                    pathAnimState.sync = null;
+                }
+                if (pathAnimState.planeMarker && map.hasLayer(pathAnimState.planeMarker)) {
+                    map.removeLayer(pathAnimState.planeMarker);
+                }
+                pathAnimState.planeMarker = null;
+                let len = measureDashLength();
+                if (len <= 0 && lastDashLen > 0) {
+                    len = lastDashLen;
+                }
+                if (len > 0) {
+                    applyDashState(len, len);
+                    lastDashLen = len;
+                }
+            }
+
+            function play() {
+                if (!window.anime || pathArr.length < 2) return;
+
+                cancel();
+
+                const pathMeta = buildPathDistanceMeta(pathArr, map);
+                const duration = durationFn(pathArr.length, pathMeta);
+
+                let dashLen = 0;
+                let measureAttempts = 0;
+                const MAX_MEASURE_ATTEMPTS = 40;
+
+                function runAnimation() {
+                    dashLen = measureDashLength();
+                    if (dashLen <= 0 && lastDashLen > 0) {
+                        dashLen = lastDashLen;
+                    }
+                    if (dashLen > 0) {
+                        lastDashLen = dashLen;
+                        applyDashState(dashLen, dashLen);
+                    }
+
+                    const planeMarker = L.marker(pathArr[0], {
+                        zIndexOffset: 1200,
+                        interactive: false,
+                        icon: L.divIcon({
+                            className: 'history-flight-plane-marker',
+                            iconSize: [18, 18],
+                            iconAnchor: [9, 9],
+                            html: `
+                                <div class="history-flight-plane">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${planeFill}" stroke="white" stroke-width="1"/>
+                                    </svg>
+                                </div>
+                            `
+                        })
+                    }).addTo(map);
+
+                    const sync = { t: 0 };
+                    pathAnimState.sync = sync;
+                    pathAnimState.planeMarker = planeMarker;
+
+                    let prevRawHeading = null;
+                    let smoothHeading = 0;
+                    let cachedDashLen = dashLen;
+
+                    const applyFrame = () => {
+                        const p = sync.t;
+                        const dist = p * pathMeta.total;
+
+                        if (cachedDashLen <= 0) {
+                            const live = measureDashLength();
+                            if (live > 0) cachedDashLen = live;
+                        }
+                        if (cachedDashLen > 0) {
+                            lastDashLen = cachedDashLen;
+                            applyDashState(cachedDashLen, cachedDashLen * (1 - p));
+                        }
+
+                        planeMarker.setLatLng(latLngAtPathDistance(pathMeta, pathArr, dist, map));
+                        const rawBr = bearingAlongPath(pathMeta, dist, pathArr, map);
+                        if (prevRawHeading === null) {
+                            smoothHeading = rawBr;
+                        } else {
+                            let turn = rawBr - prevRawHeading;
+                            if (turn > 180) turn -= 360;
+                            if (turn < -180) turn += 360;
+                            smoothHeading += turn;
+                        }
+                        prevRawHeading = rawBr;
+
+                        const planeEl = planeMarker.getElement()?.querySelector('.history-flight-plane');
+                        if (planeEl) {
+                            planeEl.style.transform = `rotate(${smoothHeading}deg)`;
+                        }
+                    };
+
+                    applyFrame();
+
+                    anime({
+                        targets: sync,
+                        t: 1,
+                        duration,
+                        easing: 'linear',
+                        update: applyFrame,
+                        complete: () => {
+                            pathAnimState.hideTimer = setTimeout(() => {
+                                pathAnimState.hideTimer = null;
+                                if (map && pathAnimState.planeMarker && map.hasLayer(pathAnimState.planeMarker)) {
+                                    map.removeLayer(pathAnimState.planeMarker);
+                                }
+                                pathAnimState.planeMarker = null;
+                            }, hidePlaneDelay);
+                        }
+                    });
+                }
+
+                function tryMeasure() {
+                    if (typeof polyline.redraw === 'function') {
+                        polyline.redraw();
+                    }
+                    dashLen = measureDashLength();
+                    if (dashLen <= 0 && lastDashLen > 0) {
+                        dashLen = lastDashLen;
+                    }
+                    if (dashLen > 0) {
+                        lastDashLen = dashLen;
+                        applyDashState(dashLen, dashLen);
+                        runAnimation();
+                        return;
+                    }
+                    measureAttempts++;
+                    if (measureAttempts >= MAX_MEASURE_ATTEMPTS) {
+                        runAnimation();
+                        return;
+                    }
+                    requestAnimationFrame(tryMeasure);
+                }
+
+                tryMeasure();
+            }
+
+            /** Hide the stroke with dash-offset until play() — stops full paths flashing while loading (overview map). */
+            function primeHidden() {
+                let attempts = 0;
+                const MAX_ATTEMPTS = 60;
+                function tryHide() {
+                    if (typeof polyline.redraw === 'function') {
+                        polyline.redraw();
+                    }
+                    let len = measureDashLength();
+                    if (len <= 0 && lastDashLen > 0) {
+                        len = lastDashLen;
+                    }
+                    if (len > 0) {
+                        lastDashLen = len;
+                        applyDashState(len, len);
+                        return;
+                    }
+                    if (++attempts < MAX_ATTEMPTS) {
+                        requestAnimationFrame(tryHide);
+                    }
+                }
+                requestAnimationFrame(tryHide);
+            }
+
+            return { play, cancel, primeHidden };
+        }
         
         // Connection status and stats
         const EVENTS_URL = window.FLIGHT_TRACKER_EVENTS_URL || `${window.location.origin}/events`;
@@ -1354,7 +1669,6 @@
                         console.log('✅ All rendering completed');
                         
                         // Load overview map after flights are rendered
-                        setTimeout(initOverviewMap, 500);
                     } catch (renderError) {
                         console.error('❌ Error in renderFlights():', renderError);
                         container.innerHTML = `
@@ -1735,6 +2049,7 @@
                         </div>
                         <div style="display: flex; flex-direction: column;">
                             <div class="flight-map-container">
+                                <button type="button" class="flight-map-replay-btn" id="flight-map-replay-${flightId}" onclick="replayFlightPathAnimation(${flightId})" title="Replay path animation" aria-label="Replay path animation">↻ Replay</button>
                                 <div class="map-loading" id="map-loading-${flightId}">Loading flight path...</div>
                                 <div class="flight-map" id="flight-map-${flightId}" style="display: none; width: 100%; height: 100%;"></div>
                             </div>
@@ -2165,100 +2480,16 @@
                     opacity: 0.8
                 }).addTo(map);
 
-                function calculateBearing(a, b) {
-                    const lat1 = (a[0] * Math.PI) / 180;
-                    const lat2 = (b[0] * Math.PI) / 180;
-                    const dLon = ((b[1] - a[1]) * Math.PI) / 180;
-                    const y = Math.sin(dLon) * Math.cos(lat2);
-                    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-                    let brng = (Math.atan2(y, x) * 180) / Math.PI;
-                    brng = (brng + 360) % 360;
-                    return brng;
+                const miniPathAnimator = createPathPlaneAnimator(map, polyline, path, {
+                    planeFill: '#ff8c00',
+                    hidePlaneDelay: 650,
+                    durationFn: (n) => Math.max(650, Math.min(2600, 420 + n * 15))
+                });
+                miniPathAnimator.primeHidden();
+                function playPathAnimation() {
+                    miniPathAnimator.play();
                 }
-
-                function interpolatePoint(pathPoints, progress) {
-                    if (pathPoints.length === 1) return pathPoints[0];
-                    const maxIndex = pathPoints.length - 1;
-                    const clamped = Math.max(0, Math.min(maxIndex, progress));
-                    const i0 = Math.floor(clamped);
-                    const i1 = Math.min(maxIndex, i0 + 1);
-                    const t = clamped - i0;
-                    const p0 = pathPoints[i0];
-                    const p1 = pathPoints[i1];
-                    return [
-                        p0[0] + (p1[0] - p0[0]) * t,
-                        p0[1] + (p1[1] - p0[1]) * t,
-                    ];
-                }
-
-                function animatePathAndPlane() {
-                    if (!window.anime || path.length < 2) return;
-
-                    const pathElement = polyline.getElement ? polyline.getElement() : polyline._path;
-                    if (pathElement && pathElement.getTotalLength) {
-                        const totalLength = pathElement.getTotalLength();
-                        pathElement.style.strokeDasharray = `${totalLength}`;
-                        pathElement.style.strokeDashoffset = `${totalLength}`;
-                        anime({
-                            targets: { offset: totalLength },
-                            offset: 0,
-                            duration: 2400,
-                            easing: 'easeOutSine',
-                            update(anim) {
-                                pathElement.style.strokeDashoffset = `${anim.animations[0].currentValue}`;
-                            }
-                        });
-                    }
-
-                    const planeMarker = L.marker(path[0], {
-                        zIndexOffset: 1200,
-                        interactive: false,
-                        icon: L.divIcon({
-                            className: 'history-flight-plane-marker',
-                            iconSize: [18, 18],
-                            iconAnchor: [9, 9],
-                            html: `
-                                <div class="history-flight-plane">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                        <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="#ff8c00" stroke="white" stroke-width="1"/>
-                                    </svg>
-                                </div>
-                            `
-                        })
-                    }).addTo(map);
-
-                    const state = { progress: 0 };
-                    const maxProgress = path.length - 1;
-                    const duration = Math.max(2600, Math.min(9000, path.length * 90));
-                    let lastBearing = 0;
-
-                    anime({
-                        targets: state,
-                        progress: maxProgress,
-                        duration,
-                        easing: 'linear',
-                        update: () => {
-                            const point = interpolatePoint(path, state.progress);
-                            planeMarker.setLatLng(point);
-
-                            const ahead = interpolatePoint(path, Math.min(maxProgress, state.progress + 0.2));
-                            if (ahead) {
-                                lastBearing = calculateBearing(point, ahead);
-                            }
-                            const planeEl = planeMarker.getElement()?.querySelector('.history-flight-plane');
-                            if (planeEl) {
-                                planeEl.style.transform = `rotate(${lastBearing}deg)`;
-                            }
-                        },
-                        complete: () => {
-                            setTimeout(() => {
-                                if (map && map.hasLayer(planeMarker)) {
-                                    map.removeLayer(planeMarker);
-                                }
-                            }, 1200);
-                        }
-                    });
-                }
+                window.__flightPathPlay[flightId] = playPathAnimation;
                 
                 // Fit map to path
                 if (path.length > 0) {
@@ -2310,7 +2541,9 @@
                             maxZoom: 10
                         });
                     }
-                    animatePathAndPlane();
+                    playPathAnimation();
+                    const replayBtn = document.getElementById(`flight-map-replay-${flightId}`);
+                    if (replayBtn) replayBtn.style.display = 'block';
                 }, 150);
                 
                 setTimeout(() => {
@@ -2475,6 +2708,7 @@
         // Initialize
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
+            initOverviewMap();
             loadFlights();
             
             // Auto-refresh every 30 seconds (disabled for now to prevent multiple requests)
@@ -2484,7 +2718,31 @@
         // Load overview map with all flights
         // Global map variable
         let overviewMap = null;
-        let mapPolylines = []; // Store polylines for removal
+        /** Shared SVG renderer so polylines are real SVG paths (stroke-dash animation works; canvas does not). */
+        let overviewPathRenderer = null;
+        let mapPolylineEntries = []; // { polyline, animator } per overview path
+        
+        function runOverviewPathAnimations() {
+            if (!overviewMap || !mapPolylineEntries.length) return;
+            mapPolylineEntries.forEach(({ animator }) => {
+                if (animator && typeof animator.cancel === 'function') {
+                    animator.cancel();
+                }
+            });
+            overviewMap.invalidateSize();
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    overviewMap.invalidateSize();
+                    const staggerMs = mapPolylineEntries.length > 20 ? 18 : 28;
+                    mapPolylineEntries.forEach(({ animator }, idx) => {
+                        setTimeout(() => {
+                            if (animator) animator.play();
+                        }, idx * staggerMs);
+                    });
+                });
+            });
+        }
+        window.replayOverviewPathAnimations = runOverviewPathAnimations;
         
         // Initialize map (loads map but no flights)
         async function initOverviewMap() {
@@ -2493,13 +2751,18 @@
             if (!mapContainer) {
                 return;
             }
+            if (overviewMap) {
+                return;
+            }
             
             try {
-                // Initialize map immediately
+                // Initialize map immediately (SVG vectors, not canvas)
                 overviewMap = L.map('overviewMap', {
                     zoomControl: true,
-                    attributionControl: true
+                    attributionControl: true,
+                    preferCanvas: false
                 });
+                overviewPathRenderer = L.svg({ padding: 0.25 });
                 
                 // Add tile layer
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -2580,13 +2843,16 @@
             const progressText = document.getElementById('overviewMapProgress');
             
             try {
-                // Clear existing polylines
-                mapPolylines.forEach(polyline => {
+                // Clear existing polylines and stop path animations
+                mapPolylineEntries.forEach(({ polyline, animator }) => {
+                    if (animator) animator.cancel();
                     if (overviewMap.hasLayer(polyline)) {
                         overviewMap.removeLayer(polyline);
                     }
                 });
-                mapPolylines = [];
+                mapPolylineEntries = [];
+                const overviewReplayBtn = document.getElementById('overviewMapReplayBtn');
+                if (overviewReplayBtn) overviewReplayBtn.style.display = 'none';
                 
                 // Get date filter values
                 const startDateInput = document.getElementById('filterStartDate');
@@ -2635,6 +2901,8 @@
                     setTimeout(() => {
                         loadingDiv.style.display = 'none';
                         if (updateBtn) updateBtn.disabled = false;
+                        const orb = document.getElementById('overviewMapReplayBtn');
+                        if (orb) orb.style.display = 'none';
                     }, 2000);
                     return;
                 }
@@ -2646,29 +2914,69 @@
                     '#007bff', '#6610f2', '#6f42c1', '#e83e8c', '#dc3545'
                 ];
                 
-                let loadedCount = 0;
                 let drawnCount = 0;
                 const totalFlights = filteredFlights.length;
                 
-                // Load positions for filtered flights
+                if (progressText) progressText.textContent = 'Loading flight tracks…';
+                
+                /** One POST loads all tracks (single DB query). Falls back to parallel GETs if unavailable. */
+                let positionsArrays = null;
+                try {
+                    const batchRes = await fetch('/api/flights/batch-positions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify({ flight_ids: filteredFlights.map(f => f.id) })
+                    });
+                    if (batchRes.ok) {
+                        const batchJson = await batchRes.json();
+                        const byF = batchJson.positions_by_flight || {};
+                        positionsArrays = filteredFlights.map(f => byF[String(f.id)] || []);
+                    }
+                } catch (e) {
+                    console.warn('Batch positions request failed:', e);
+                }
+                
+                if (!positionsArrays) {
+                    const CONCURRENCY = 14;
+                    positionsArrays = new Array(totalFlights);
+                    let nextIdx = 0;
+                    let finished = 0;
+                    const worker = async () => {
+                        while (true) {
+                            const i = nextIdx++;
+                            if (i >= totalFlights) return;
+                            const flight = filteredFlights[i];
+                            try {
+                                const posResponse = await fetch(`/api/flights/${flight.id}/positions`);
+                                if (!posResponse.ok) {
+                                    positionsArrays[i] = [];
+                                } else {
+                                    const posData = await posResponse.json();
+                                    positionsArrays[i] = posData.positions || [];
+                                }
+                            } catch (err) {
+                                console.warn(`Error loading positions for flight ${flight.id}:`, err);
+                                positionsArrays[i] = [];
+                            }
+                            finished++;
+                            if (progressText && (finished % 25 === 0 || finished === totalFlights)) {
+                                progressText.textContent = `Loading tracks ${finished}/${totalFlights}…`;
+                            }
+                        }
+                    };
+                    await Promise.all(
+                        Array.from({ length: Math.min(CONCURRENCY, Math.max(1, totalFlights)) }, () => worker())
+                    );
+                } else if (progressText) {
+                    progressText.textContent = `Drawing ${totalFlights} tracks…`;
+                }
+                
                 for (let i = 0; i < filteredFlights.length; i++) {
                     const flight = filteredFlights[i];
                     const color = colors[i % colors.length];
+                    const positions = positionsArrays[i];
                     
                     try {
-                        // Update progress
-                        loadedCount++;
-                        if (progressText) {
-                            progressText.textContent = `Loading flight ${loadedCount}/${totalFlights}...`;
-                        }
-                        
-                        const posResponse = await fetch(`/api/flights/${flight.id}/positions`);
-                        if (!posResponse.ok) continue;
-                        
-                        const posData = await posResponse.json();
-                        const positions = posData.positions || [];
-                        
-                        // Filter valid positions
                         const validPositions = positions.filter(p => {
                             const lat = p.lat;
                             const lon = p.lon;
@@ -2678,26 +2986,39 @@
                         });
                         
                         if (validPositions.length > 0) {
-                            // Create path
-                            const path = validPositions.map(p => [p.lat, p.lon]);
+                            const rawPath = validPositions.map(p => [p.lat, p.lon]);
+                            const path = [];
+                            for (let pi = 0; pi < rawPath.length; pi++) {
+                                const pt = rawPath[pi];
+                                const prev = path[path.length - 1];
+                                if (!prev || prev[0] !== pt[0] || prev[1] !== pt[1]) {
+                                    path.push(pt);
+                                }
+                            }
                             
-                            // Draw polyline
-                            const polyline = L.polyline(path, {
+                            const polylineOpts = {
                                 color: color,
                                 weight: 2,
                                 opacity: 0.6
-                            }).addTo(overviewMap);
-                            
-                            mapPolylines.push(polyline);
-                            drawnCount++;
-                            
-                            // Update progress
-                            if (progressText) {
-                                progressText.textContent = `Drawn ${drawnCount} flight${drawnCount !== 1 ? 's' : ''} (${loadedCount}/${totalFlights} loaded)`;
+                            };
+                            if (overviewPathRenderer) {
+                                polylineOpts.renderer = overviewPathRenderer;
                             }
+                            const polyline = L.polyline(path, polylineOpts).addTo(overviewMap);
+
+                            if (path.length >= 2) {
+                                const animator = createPathPlaneAnimator(overviewMap, polyline, path, {
+                                    planeFill: color,
+                                    hidePlaneDelay: 550,
+                                    durationFn: (n) => Math.max(500, Math.min(2200, 300 + n * 12))
+                                });
+                                animator.primeHidden();
+                                mapPolylineEntries.push({ polyline, animator });
+                            }
+                            drawnCount++;
                         }
                     } catch (error) {
-                        console.warn(`Error loading positions for flight ${flight.id}:`, error);
+                        console.warn(`Error drawing flight ${flight.id}:`, error);
                     }
                 }
                 
@@ -2722,10 +3043,16 @@
                 if (progressText) progressText.textContent = 'Centering on receiver location...';
                 overviewMap.setView([receiverLat, receiverLon], 10);
                 
-                // Hide loading overlay
+                // Hide loading overlay, then run the same dash + plane animation as the per-flight maps.
+                // Wait for layout + SVG path metrics (getTotalLength) before starting dash animation.
                 setTimeout(() => {
                     loadingDiv.style.display = 'none';
                     if (updateBtn) updateBtn.disabled = false;
+                    const orb = document.getElementById('overviewMapReplayBtn');
+                    if (orb) {
+                        orb.style.display = mapPolylineEntries.length > 0 ? 'block' : 'none';
+                    }
+                    runOverviewPathAnimations();
                 }, 500);
                 
                 console.log(`✅ Map updated with ${drawnCount} flights drawn`);
@@ -2735,6 +3062,8 @@
                 if (loadingText) loadingText.textContent = 'Error loading flights';
                 if (progressText) progressText.textContent = error.message || 'Unknown error';
                 if (updateBtn) updateBtn.disabled = false;
+                const orb = document.getElementById('overviewMapReplayBtn');
+                if (orb) orb.style.display = 'none';
             }
         }
         
