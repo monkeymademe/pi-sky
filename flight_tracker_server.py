@@ -1350,6 +1350,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
         
         if path == '/api/config':
             self.handle_config_post()
+        elif path == '/api/flights/batch-positions':
+            self.handle_flights_batch_positions_post()
         else:
             self.send_response(404)
             self.end_headers()
@@ -2672,6 +2674,100 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(error_bytes)
             self.wfile.flush()
+
+    def handle_flights_batch_positions_post(self):
+        """POST /api/flights/batch-positions — JSON body {\"flight_ids\": [1,2,...]} — one SQLite query for all tracks."""
+        try:
+            global flight_db
+            if not flight_db:
+                config = load_config()
+                db_config = config.get('database', {})
+                if db_config.get('enabled', False):
+                    db_path = db_config.get('db_path', 'flights.db')
+                    if not os.path.exists(db_path):
+                        self.send_response(503)
+                        self.send_header('Content-Type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            'error': 'Database not available',
+                            'message': f'Database file "{db_path}" does not exist.'
+                        }).encode())
+                        return
+                    flight_db = FlightDatabase(db_path)
+                else:
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        'error': 'Database not enabled',
+                        'message': 'Database is disabled in config.json'
+                    }).encode())
+                    return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length <= 0:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Empty body'}).encode())
+                return
+            if content_length > 32 * 1024 * 1024:
+                self.send_response(413)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Payload too large'}).encode())
+                return
+
+            body = self.rfile.read(content_length)
+            data = json.loads(body.decode('utf-8'))
+            raw_ids = data.get('flight_ids')
+            if not isinstance(raw_ids, list):
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'flight_ids must be a JSON array'}).encode())
+                return
+
+            flight_ids = []
+            for x in raw_ids:
+                try:
+                    flight_ids.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+            if len(flight_ids) > 10000:
+                flight_ids = flight_ids[:10000]
+            seen = set()
+            unique_ids = []
+            for fid in flight_ids:
+                if fid not in seen:
+                    seen.add(fid)
+                    unique_ids.append(fid)
+            flight_ids = unique_ids
+
+            by_fid = flight_db.get_positions_for_flight_ids(flight_ids)
+            response = {
+                'positions_by_flight': {str(k): v for k, v in by_fid.items()},
+            }
+            response_json = json.dumps(response)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Length', str(len(response_json.encode('utf-8'))))
+            self.end_headers()
+            self.wfile.write(response_json.encode('utf-8'))
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Invalid JSON'}).encode())
+        except Exception as e:
+            print(f"batch-positions error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode())
 
     def handle_sse(self):
         global latest_flight_data
