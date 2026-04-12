@@ -729,33 +729,20 @@
                 <!-- E-ink Map Generation -->
                 <div class="section">
                     <div class="section-header" onclick="toggleSection(this)">
-                        E-ink Map Generation
+                        Inky e-paper display
                     </div>
                     <div class="section-content">
-                        <!-- Master: Inky PNG + optional hardware -->
                         <div class="form-group full-width">
                             <div class="toggle-group">
                                 <div class="toggle-item">
-                                    <label for="inky_enabled">Generate images for Inky e-paper display</label>
+                                    <label for="inky_enabled">Enable Inky e-paper maps</label>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="inky_enabled" name="inky_enabled">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
                             </div>
-                            <span class="help-text">Off by default. Turn on only if a Pimoroni Inky display is connected; writes inky_ready.png and can push to the panel when the driver is available.</span>
-                        </div>
-                        <!-- Enable Toggle (Left Aligned) -->
-                        <div class="form-group full-width">
-                            <div class="toggle-group">
-                                <div class="toggle-item">
-                                    <label for="map_enabled">Enable map generation</label>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="map_enabled" name="map_enabled">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                            </div>
+                            <span class="help-text">Off by default. When on, Pi-Sky builds inky_ready.png on a schedule, uses the options below, and can push to a connected Pimoroni Inky when the driver is available.</span>
                         </div>
                         <!-- Toggle Row: Show Route info and Prefer closest flight -->
                         <div class="form-group full-width">
@@ -1075,7 +1062,7 @@
                 const requiredIds = [
                     'dump1090_url', 'receiver_lat', 'receiver_lon', 'hide_receiver', 'show_test_flight',
                     'http_host', 'http_port', 'websocket_host', 'websocket_port',
-                    'inky_enabled', 'map_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
+                    'inky_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
                     'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days'
@@ -1141,7 +1128,6 @@
 
                 // Map generation
                 const mg = config.map_generation || {};
-                setChecked('map_enabled', mg.enabled !== false);
                 setValue('map_min_interval', mg.min_interval_seconds || 300);
                 setChecked('map_prefer_closest', mg.prefer_closest !== false);
                 setChecked('map_require_route', mg.require_route !== false);
@@ -1222,7 +1208,6 @@
                     enabled: document.getElementById('inky_enabled').checked
                 },
                 map_generation: {
-                    enabled: document.getElementById('map_enabled').checked,
                     min_interval_seconds: parseInt(document.getElementById('map_min_interval').value) || 300,
                     prefer_closest: document.getElementById('map_prefer_closest').checked,
                     require_route: document.getElementById('map_require_route').checked,

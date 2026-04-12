@@ -178,7 +178,6 @@ def load_config():
             # Set defaults for map generation if not present
             if 'map_generation' not in config:
                 config['map_generation'] = {
-                    'enabled': True,
                     'min_interval_seconds': 300,  # 5 minutes
                     'prefer_closest': True,
                     'require_route': True,
@@ -189,6 +188,9 @@ def load_config():
                 config['inky'] = {}
             if 'enabled' not in config['inky']:
                 config['inky']['enabled'] = False
+            # Legacy: map_generation.enabled was merged into inky.enabled
+            if isinstance(config.get('map_generation'), dict):
+                config['map_generation'].pop('enabled', None)
             return config
     except FileNotFoundError:
         print("=" * 80)
@@ -385,11 +387,6 @@ def should_generate_map(enriched_flights, config):
         return (False, None)
 
     map_config = config.get('map_generation', {})
-    
-    # Check if map generation is enabled
-    if not map_config.get('enabled', True):
-        return (False, None)
-    
     min_interval = map_config.get('min_interval_seconds', 300)  # Default 5 minutes
     
     # Check if image file exists and how old it is

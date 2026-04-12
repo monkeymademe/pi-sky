@@ -13,7 +13,6 @@
         "enabled": false
     },
     "map_generation": {
-        "enabled": true,
         "min_interval_seconds": 300,
         "prefer_closest": true,
         "require_route": true,
