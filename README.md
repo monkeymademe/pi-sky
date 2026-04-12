@@ -1,15 +1,32 @@
 # Pi-Sky
 
-A real-time flight tracking system for the Raspberry Pi (and friends): it collects ADS-B data from dump1090 and shows it in a web UI with optional map visualization.
+![Pi-Sky logo](web/assets/pi-sky-logo.svg)
+
+**Pi-Sky** is a real-time flight-tracking web UI for the **Raspberry Pi**.
+
+Aircraft broadcast ADS-B messages on 1090 MHz, often several times per second, carrying basic information about each flight, including:
+
+- **ICAO address** — a unique hex identifier for that aircraft's transponder.
+- **Callsign** — the flight ID (e.g. airline + flight number), when set.
+- **Position** — latitude and longitude from the aircraft's GPS.
+- **Altitude** — pressure altitude.
+- **Speed and track** — ground speed and the direction the aircraft is moving over the ground.
+- **Vertical rate** — climb or descent in feet per minute (or level).
+- **Squawk code** — the transponder code (e.g. 1200 for VFR in many places), when transmitted.
+
+When an aircraft is **within range** of your antenna, **dump1090** listens for those **1090 MHz** bursts and **decodes** them. That decoded stream is what feeds local tools and what people often **upload** to global tracking networks like FlightAware, Flightradar24 and ADS-B Exchange — essentially crowdsourced coverage built from many receivers worldwide.
+
+**Pi-Sky** reads **dump1090** data from **your** receiver, enriches it with **third-party APIs** (for example route and aircraft details), and serves everything to the browser. **Your data stays local** unless you separately choose to feed another service.
 
 ## Features
 
-- **Data Collection**: Fetches aircraft data from dump1090
-- **Route Enrichment**: Looks up origin/destination using adsb.lol API
-- **Web Interface**: Modern, responsive web UI for flight visualization
-- **Interactive Maps**: Optional Leaflet-based map showing aircraft positions and routes
-- **Real-time Updates**: Live updates via WebSocket
-- **Unified Server**: Single program handles everything (HTTP + WebSocket + data collection)
+- **Simple local web UI** served from the Raspberry Pi.
+- **API-backed enrichment** (e.g. origin/destination and extra flight context).
+- **Live interactive map** of aircraft your receiver is detecting.
+- **Optional Pimoroni Inky e-paper support** — generate map images for a connected Inky display (when enabled in config and hardware is present).
+- **SQLite database** with **configurable** retention (e.g. **7 days** of position history by default).
+- **Mini maps** for individual past flights.
+- **Full-map replay** for reviewing a day or week's traffic.
 
 ## Architecture
 
