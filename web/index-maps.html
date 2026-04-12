@@ -749,6 +749,67 @@
         let reconnectTimer = null;
         let reconnectDelay = 1000;
         const MAX_RECONNECT_DELAY = 30000;
+
+        /** Short geographic stub so the heading dash stays near the icon at any zoom (was 5 km). */
+        const HEADING_LINE_DISTANCE_KM = 0.32;
+        const HEADING_LINE_OPACITY = 0.72;
+        const HEADING_LINE_OPACITY_ZOOMING = 0.22;
+
+        function calculateHeadingEndpoint(lat, lon, headingDeg, distanceKm) {
+            const headingRad = (headingDeg * Math.PI) / 180;
+            const R = 6371;
+            const distanceRad = distanceKm / R;
+            const newLat = Math.asin(
+                Math.sin(lat * Math.PI / 180) * Math.cos(distanceRad) +
+                Math.cos(lat * Math.PI / 180) * Math.sin(distanceRad) * Math.cos(headingRad)
+            ) * 180 / Math.PI;
+            const newLon = lon + Math.atan2(
+                Math.sin(headingRad) * Math.sin(distanceRad) * Math.cos(lat * Math.PI / 180),
+                Math.cos(distanceRad) - Math.sin(lat * Math.PI / 180) * Math.sin(newLat * Math.PI / 180)
+            ) * 180 / Math.PI;
+            return [newLat, newLon];
+        }
+
+        /** Keep polyline start exactly on the marker anchor (avoids 1-frame lag vs passed lat/lon). */
+        function setHeadingLineForIcao(icao, marker, headingDeg) {
+            if (!map || !marker || headingDeg === null || headingDeg === undefined) return;
+            const line = aircraftHeadingLines[icao];
+            if (!line) return;
+            const ll = marker.getLatLng();
+            const endpoint = calculateHeadingEndpoint(ll.lat, ll.lng, headingDeg, HEADING_LINE_DISTANCE_KM);
+            line.setLatLngs([[ll.lat, ll.lng], endpoint]);
+        }
+
+        function syncAllHeadingLinesFromMarkers() {
+            if (!map) return;
+            Object.keys(aircraftHeadingLines).forEach((icao) => {
+                const marker = aircraftMarkers[icao];
+                if (!marker || !map.hasLayer(marker)) return;
+                const ang = marker._angle;
+                if (ang === null || ang === undefined) return;
+                setHeadingLineForIcao(icao, marker, ang);
+            });
+        }
+
+        function setAllHeadingLinesZoomStyle(zooming) {
+            const op = zooming ? HEADING_LINE_OPACITY_ZOOMING : HEADING_LINE_OPACITY;
+            Object.keys(aircraftHeadingLines).forEach((icao) => {
+                const line = aircraftHeadingLines[icao];
+                if (line && line.setStyle) line.setStyle({ opacity: op });
+            });
+        }
+
+        let headingLineMapHooks = false;
+        function ensureHeadingLineMapHooks() {
+            if (!map || headingLineMapHooks) return;
+            headingLineMapHooks = true;
+            map.on('zoomstart', () => setAllHeadingLinesZoomStyle(true));
+            map.on('zoomend', () => {
+                setAllHeadingLinesZoomStyle(false);
+                syncAllHeadingLinesFromMarkers();
+            });
+            map.on('moveend', () => syncAllHeadingLinesFromMarkers());
+        }
         
         // Initialize map
         function initMap(centerLat, centerLon, hideReceiver = false) {
@@ -825,6 +886,7 @@
             berMarker.bindPopup('<b>BER - Berlin Brandenburg Airport</b>');
             
             console.log('Map initialized at:', centerLat, centerLon);
+            ensureHeadingLineMapHooks();
             setTimeout(() => {
                 if (map) map.invalidateSize();
             }, 0);
@@ -1536,32 +1598,6 @@
                 }
             }
             
-            // Helper function to calculate endpoint of heading line
-            function calculateHeadingEndpoint(lat, lon, heading, distanceKm = 5) {
-                // Convert heading from degrees to radians
-                const headingRad = (heading * Math.PI) / 180;
-                
-                // Earth's radius in km
-                const R = 6371;
-                
-                // Convert distance to radians
-                const distanceRad = distanceKm / R;
-                
-                // Calculate new latitude
-                const newLat = Math.asin(
-                    Math.sin(lat * Math.PI / 180) * Math.cos(distanceRad) +
-                    Math.cos(lat * Math.PI / 180) * Math.sin(distanceRad) * Math.cos(headingRad)
-                ) * 180 / Math.PI;
-                
-                // Calculate new longitude
-                const newLon = lon + Math.atan2(
-                    Math.sin(headingRad) * Math.sin(distanceRad) * Math.cos(lat * Math.PI / 180),
-                    Math.cos(distanceRad) - Math.sin(lat * Math.PI / 180) * Math.sin(newLat * Math.PI / 180)
-                ) * 180 / Math.PI;
-                
-                return [newLat, newLon];
-            }
-
             function updateMarkerVisual(marker, flightStatus, angleValue) {
                 const icon = L.divIcon({
                     className: `aircraft-marker ${flightStatus}`,
@@ -1569,15 +1605,6 @@
                     html: buildAircraftIconHtml(flightStatus, angleValue),
                 });
                 marker.setIcon(icon);
-            }
-
-            function setHeadingLineLatLng(icao, lat, lon, heading) {
-                if (heading === null || heading === undefined) return;
-                const endpoint = calculateHeadingEndpoint(lat, lon, heading, 5);
-                const linePoints = [[lat, lon], endpoint];
-                if (aircraftHeadingLines[icao]) {
-                    aircraftHeadingLines[icao].setLatLngs(linePoints);
-                }
             }
 
             function animateMarkerMovement(marker, flight, targetAngle, positionChanged) {
@@ -1601,7 +1628,7 @@
                     marker.setLatLng([endLat, endLon]);
                     marker._angle = normalizeAngle(targetAngle);
                     updateMarkerVisual(marker, status, marker._angle);
-                    setHeadingLineLatLng(icao, endLat, endLon, marker._angle);
+                    setHeadingLineForIcao(icao, marker, marker._angle);
                     return;
                 }
 
@@ -1621,12 +1648,13 @@
                         const currentAngle = normalizeAngle(tweenState.angle);
                         marker._angle = currentAngle;
                         updateMarkerVisual(marker, status, currentAngle);
-                        setHeadingLineLatLng(icao, tweenState.lat, tweenState.lon, currentAngle);
+                        setHeadingLineForIcao(icao, marker, currentAngle);
                     },
                     complete: () => {
+                        marker.setLatLng([endLat, endLon]);
                         marker._angle = normalizeAngle(targetAngle);
                         updateMarkerVisual(marker, status, marker._angle);
-                        setHeadingLineLatLng(icao, endLat, endLon, marker._angle);
+                        setHeadingLineForIcao(icao, marker, marker._angle);
                         delete aircraftMarkerAnimations[icao];
                     },
                 });
@@ -1683,6 +1711,22 @@
                         
                         const status = flight.status || 'new';
                         const rotation = angle !== null ? angle : (existingMarker._angle ?? 0);
+
+                        // Create heading line before animation so setHeadingLineForIcao always has a polyline
+                        if (angle !== null && !aircraftHeadingLines[flight.icao]) {
+                            const ll = existingMarker.getLatLng();
+                            const endpoint = calculateHeadingEndpoint(ll.lat, ll.lng, angle, HEADING_LINE_DISTANCE_KM);
+                            const linePoints = [[ll.lat, ll.lng], endpoint];
+                            const lineHue = flight.status === 'unidentified' ? '#8ba8b8' : '#5a7a8a';
+                            const headingLine = L.polyline(linePoints, {
+                                color: lineHue,
+                                weight: 2,
+                                opacity: HEADING_LINE_OPACITY,
+                                dashArray: '5, 5'
+                            }).addTo(map);
+                            aircraftHeadingLines[flight.icao] = headingLine;
+                        }
+
                         animateMarkerMovement(existingMarker, flight, rotation, positionChanged);
                         
                         // If popup is open, update it with new flight data
@@ -1699,23 +1743,6 @@
                             // Reopen with updated data
                             if (existingMarker.openCustomPopup) {
                                 existingMarker.openCustomPopup();
-                            }
-                        }
-                        
-                        // Create heading line if missing (otherwise animation updates it continuously)
-                        if (angle !== null) {
-                            const endpoint = calculateHeadingEndpoint(flight.lat, flight.lon, angle, 5);
-                            const linePoints = [[flight.lat, flight.lon], endpoint];
-                            
-                            if (!aircraftHeadingLines[flight.icao]) {
-                                // Create new heading line
-                                const headingLine = L.polyline(linePoints, {
-                                    color: '#ff0000',
-                                    weight: 2,
-                                    opacity: 0.7,
-                                    dashArray: '5, 5'
-                                }).addTo(map);
-                                aircraftHeadingLines[flight.icao] = headingLine;
                             }
                         }
                     } else {
@@ -1735,12 +1762,13 @@
                             // Use light gray for unidentified flights
                             const lineColor = (flight.status === 'unidentified') ? '#8ba8b8' : '#5a7a8a';
                             if (angle !== null) {
-                                const endpoint = calculateHeadingEndpoint(flight.lat, flight.lon, angle, 5);
-                                const linePoints = [[flight.lat, flight.lon], endpoint];
+                                const ll = marker.getLatLng();
+                                const endpoint = calculateHeadingEndpoint(ll.lat, ll.lng, angle, HEADING_LINE_DISTANCE_KM);
+                                const linePoints = [[ll.lat, ll.lng], endpoint];
                                 const headingLine = L.polyline(linePoints, {
                                     color: lineColor,
                                     weight: 2,
-                                    opacity: 0.7,
+                                    opacity: HEADING_LINE_OPACITY,
                                     dashArray: '5, 5'
                                 }).addTo(map);
                                 aircraftHeadingLines[flight.icao] = headingLine;
