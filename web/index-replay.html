@@ -905,14 +905,23 @@
         }
         
         .overview-map-loading {
-            display: flex;
+            position: absolute;
+            inset: 0;
+            z-index: 600;
+            display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 20px;
             color: var(--text-primary);
             font-size: 1em;
-            margin-top: 10px;
+            box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(3px);
+        }
+
+        [data-theme="dark"] .overview-map-loading {
+            background: rgba(26, 38, 52, 0.88);
         }
         
         .overview-map-loading .loading-spinner {
@@ -936,8 +945,27 @@
         }
         
         .overview-map-loading .loading-progress {
-            font-size: 0.85em;
+            font-size: 0.9em;
             color: var(--text-muted);
+            margin-bottom: 12px;
+            min-height: 1.35em;
+            text-align: center;
+        }
+
+        .overview-map-progress-track {
+            width: min(320px, 85%);
+            height: 6px;
+            border-radius: 999px;
+            background: var(--border-color);
+            overflow: hidden;
+        }
+
+        .overview-map-progress-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 999px;
+            background: var(--accent-gradient);
+            transition: width 0.15s ease-out;
         }
         
         .map-loading {
@@ -1157,6 +1185,14 @@
             <div class="overview-map-container">
                 <div class="overview-map" id="overviewMap"></div>
                 <button type="button" class="flight-map-replay-btn" id="overviewMapReplayBtn" onclick="replayOverviewPathAnimations()" title="Replay path animations" aria-label="Replay path animations" style="display: none;">↻ Replay</button>
+                <div class="overview-map-loading" id="overviewMapLoading" style="display: none;" aria-live="polite">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-text" id="overviewMapPhase">Loading flights...</div>
+                    <div class="loading-progress" id="overviewMapProgress"></div>
+                    <div class="overview-map-progress-track" aria-hidden="true">
+                        <div class="overview-map-progress-fill" id="overviewMapProgressBar"></div>
+                    </div>
+                </div>
             </div>
             <div class="map-filter-controls" id="mapFilterControls">
                 <div class="filter-row">
@@ -1168,13 +1204,8 @@
                         <label for="filterEndDate">End Date:</label>
                         <input type="date" id="filterEndDate" class="filter-input">
                     </div>
-                    <button id="updateMapBtn" class="update-btn">Update Map</button>
+                    <button id="updateMapBtn" class="update-btn">Load flights</button>
                 </div>
-            </div>
-            <div class="overview-map-loading" id="overviewMapLoading" style="display: none;">
-                <div class="loading-spinner"></div>
-                <div class="loading-text">Loading flights...</div>
-                <div class="loading-progress" id="overviewMapProgress"></div>
             </div>
         </div>
                 
@@ -2884,8 +2915,19 @@
             
             // Show loading
             loadingDiv.style.display = 'flex';
-            const loadingText = loadingDiv.querySelector('.loading-text');
+            const phaseEl = document.getElementById('overviewMapPhase') || loadingDiv.querySelector('.loading-text');
             const progressText = document.getElementById('overviewMapProgress');
+            const progressBar = document.getElementById('overviewMapProgressBar');
+            const setOverviewProgress = (title, detail, pct) => {
+                if (title != null && phaseEl) phaseEl.textContent = title;
+                if (detail != null && progressText) progressText.textContent = detail;
+                if (pct != null && progressBar && Number.isFinite(pct)) {
+                    progressBar.style.width = Math.min(100, Math.max(0, pct)) + '%';
+                }
+            };
+            /** Lets the browser paint progress text/bar before heavy loops continue */
+            const yieldToUi = () => new Promise((resolve) => requestAnimationFrame(resolve));
+            setOverviewProgress('Fetching flight list', 'Requesting filtered flights…', 5);
             
             try {
                 // Clear existing polylines and stop path animations
@@ -2927,9 +2969,6 @@
                     apiUrl += `&first_seen_end=${encodeURIComponent(endTime)}`;
                 }
                 
-                if (loadingText) loadingText.textContent = 'Fetching flights...';
-                if (progressText) progressText.textContent = '';
-                
                 // Fetch filtered flights
                 const response = await fetch(apiUrl);
                 if (!response.ok) {
@@ -2939,10 +2978,8 @@
                 const data = await response.json();
                 const filteredFlights = data.flights || [];
                 
-                if (loadingText) loadingText.textContent = `Loading ${filteredFlights.length} flights...`;
-                
                 if (filteredFlights.length === 0) {
-                    if (progressText) progressText.textContent = 'No flights found for selected date range';
+                    setOverviewProgress('No flights in range', 'Try different dates or clear filters.', 100);
                     setTimeout(() => {
                         loadingDiv.style.display = 'none';
                         if (updateBtn) updateBtn.disabled = false;
@@ -2961,12 +2998,20 @@
                 
                 let drawnCount = 0;
                 const totalFlights = filteredFlights.length;
-                
-                if (progressText) progressText.textContent = 'Loading flight tracks…';
+                setOverviewProgress(
+                    'Loading map data',
+                    `Preparing ${totalFlights} flight${totalFlights !== 1 ? 's' : ''}…`,
+                    14
+                );
                 
                 /** One POST loads all tracks (single DB query). Falls back to parallel GETs if unavailable. */
                 let positionsArrays = null;
                 try {
+                    setOverviewProgress(
+                        'Loading track data',
+                        `Fetching positions for ${totalFlights} flights…`,
+                        18
+                    );
                     const batchRes = await fetch('/api/flights/batch-positions', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -3004,17 +3049,34 @@
                                 positionsArrays[i] = [];
                             }
                             finished++;
-                            if (progressText && (finished % 25 === 0 || finished === totalFlights)) {
-                                progressText.textContent = `Loading tracks ${finished}/${totalFlights}…`;
+                            const trackThrottle = Math.max(1, Math.floor(totalFlights / 200));
+                            if (finished % trackThrottle === 0 || finished === totalFlights) {
+                                const tPct = 15 + (finished / totalFlights) * 30;
+                                setOverviewProgress(
+                                    'Loading track data',
+                                    `${finished} of ${totalFlights} flights`,
+                                    tPct
+                                );
+                                await yieldToUi();
                             }
                         }
                     };
                     await Promise.all(
                         Array.from({ length: Math.min(CONCURRENCY, Math.max(1, totalFlights)) }, () => worker())
                     );
-                } else if (progressText) {
-                    progressText.textContent = `Drawing ${totalFlights} tracks…`;
+                } else {
+                    setOverviewProgress(
+                        'Track data ready',
+                        `Loaded positions for ${totalFlights} flights`,
+                        45
+                    );
+                    await yieldToUi();
                 }
+                
+                setOverviewProgress('Drawing paths on map', `0 of ${totalFlights} flights`, 45);
+                await yieldToUi();
+                /** ~80 UI updates max so large lists stay responsive */
+                const drawProgressEvery = Math.max(1, Math.ceil(totalFlights / 80));
                 
                 for (let i = 0; i < filteredFlights.length; i++) {
                     const flight = filteredFlights[i];
@@ -3065,6 +3127,16 @@
                     } catch (error) {
                         console.warn(`Error drawing flight ${flight.id}:`, error);
                     }
+                    const done = i + 1;
+                    if (done % drawProgressEvery === 0 || done === totalFlights) {
+                        const dPct = 45 + (done / totalFlights) * 50;
+                        setOverviewProgress(
+                            'Drawing paths on map',
+                            `${done} of ${totalFlights} flights`,
+                            Math.min(96, dPct)
+                        );
+                        await yieldToUi();
+                    }
                 }
                 
                 // Get receiver location for centering
@@ -3085,7 +3157,7 @@
                 }
                 
                 // Center map on receiver location
-                if (progressText) progressText.textContent = 'Centering on receiver location...';
+                setOverviewProgress('Almost done', 'Centering map on receiver…', 97);
                 overviewMap.setView([receiverLat, receiverLon], 10);
                 
                 // Hide loading overlay, then run the same dash + plane animation as the per-flight maps.
@@ -3104,11 +3176,16 @@
                 
             } catch (error) {
                 console.error('Error loading flights on map:', error);
-                if (loadingText) loadingText.textContent = 'Error loading flights';
-                if (progressText) progressText.textContent = error.message || 'Unknown error';
+                const phaseElErr = document.getElementById('overviewMapPhase') || loadingDiv.querySelector('.loading-text');
+                const progressTextErr = document.getElementById('overviewMapProgress');
+                const progressBarErr = document.getElementById('overviewMapProgressBar');
+                if (phaseElErr) phaseElErr.textContent = 'Error loading flights';
+                if (progressTextErr) progressTextErr.textContent = error.message || 'Unknown error';
+                if (progressBarErr) progressBarErr.style.width = '100%';
                 if (updateBtn) updateBtn.disabled = false;
                 const orb = document.getElementById('overviewMapReplayBtn');
                 if (orb) orb.style.display = 'none';
+                loadingDiv.style.display = 'none';
             }
         }
         
