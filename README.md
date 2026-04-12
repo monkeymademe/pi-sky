@@ -78,28 +78,63 @@ flight_tracker_server.py
 
 ## Configuration
 
-Edit `config.json`:
+Copy the template and edit **`config.json`** (same directory as the server):
+
+```bash
+cp config_template.json config.json
+```
+
+**Required fields** (validated when saving via `/api/config`): `dump1090_url`, `receiver_lat`, `receiver_lon`. The server also expects integer `http_port` and `websocket_port` in saved configs.
+
+The authoritative full example is **`config_template.json`** in this repo. It includes:
+
 ```json
 {
-    "dump1090_url": "http://your-dump1090-url/data/aircraft.json",
+    "dump1090_url": "http://localhost:8080/data/aircraft.json",
     "receiver_lat": 52.40585,
     "receiver_lon": 13.55214,
+    "nearest_airport": "EDDB",
     "hide_receiver": false,
     "show_test_flight": false,
     "http_host": "0.0.0.0",
-    "http_port": 8080,
+    "http_port": 5050,
     "websocket_host": "0.0.0.0",
-    "websocket_port": 8765
+    "websocket_port": 8765,
+    "inky": { "enabled": false },
+    "map_generation": {
+        "min_interval_seconds": 300,
+        "prefer_closest": true,
+        "require_route": true,
+        "min_altitude": 10000,
+        "max_distance_km": 500
+    },
+    "clear_skies": { "enabled": true },
+    "database": {
+        "enabled": true,
+        "db_path": "flights.db",
+        "snapshot_interval_seconds": 5,
+        "cleanup_days": 7
+    }
 }
 ```
 
-Configuration options:
-- `dump1090_url`: URL to your dump1090 instance's aircraft.json endpoint
-- `receiver_lat` / `receiver_lon`: Your receiver's GPS coordinates (for distance calculation and map centering)
-- `hide_receiver`: Set to `true` to hide the receiver marker on the map (default: `false`)
-- `show_test_flight`: Set to `true` to show a test flight for debugging (default: `false`)
-- `http_host` / `http_port`: HTTP server bind address and port
-- `websocket_host` / `websocket_port`: Still validated in config; **live flight updates use SSE on the HTTP port** at `/events`, not a separate WebSocket listener.
+**Common options**
+
+| Key | Purpose |
+|-----|--------|
+| `dump1090_url` | HTTP(S) URL to `aircraft.json` from dump1090 (or compatible). |
+| `receiver_lat` / `receiver_lon` | Your antenna position (maps, distance, clear-skies centering). |
+| `nearest_airport` | Optional ICAO/IATA code for labels and clear-skies context. |
+| `hide_receiver` | Hide the receiver marker on the map. |
+| `show_test_flight` | Inject a test aircraft for UI debugging. |
+| `http_host` / `http_port` | Bind address and port for the web UI and **`/events` (SSE)**. If omitted at startup, the server defaults to `0.0.0.0:8080`. |
+| `websocket_host` / `websocket_port` | Must be integers when present; **not used for live updates** — the browser uses **SSE** on the HTTP port at `/events`. |
+| `inky.enabled` | When `true`, generate `inky_ready.png` and optional Inky hardware output (see template defaults). |
+| `map_generation.*` | Intervals and filters for automatic e-paper map updates (when `inky.enabled` is `true`). |
+| `clear_skies` | Clear-skies / idle map behaviour (with `nearest_airport` and cached coords as applicable). |
+| `database.*` | SQLite flight history, snapshot interval, and retention for replay / mini-maps. |
+
+Use the **config page** in the web UI (`config.html`) or edit `config.json` directly; saving through the API validates types and required keys.
 
 ## Usage
 
