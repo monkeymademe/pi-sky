@@ -9,6 +9,9 @@
     "http_port": 5050,
     "websocket_host": "0.0.0.0",
     "websocket_port": 8765,
+    "inky": {
+        "enabled": false
+    },
     "map_generation": {
         "enabled": true,
         "min_interval_seconds": 300,

@@ -732,6 +732,19 @@
                         E-ink Map Generation
                     </div>
                     <div class="section-content">
+                        <!-- Master: Inky PNG + optional hardware -->
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="inky_enabled">Generate images for Inky e-paper display</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="inky_enabled" name="inky_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <span class="help-text">Off by default. Turn on only if a Pimoroni Inky display is connected; writes inky_ready.png and can push to the panel when the driver is available.</span>
+                        </div>
                         <!-- Enable Toggle (Left Aligned) -->
                         <div class="form-group full-width">
                             <div class="toggle-group">
@@ -1062,7 +1075,7 @@
                 const requiredIds = [
                     'dump1090_url', 'receiver_lat', 'receiver_lon', 'hide_receiver', 'show_test_flight',
                     'http_host', 'http_port', 'websocket_host', 'websocket_port',
-                    'map_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
+                    'inky_enabled', 'map_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
                     'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days'
@@ -1122,6 +1135,9 @@
                 setValue('http_port', config.http_port || 8080);
                 setValue('websocket_host', config.websocket_host || '0.0.0.0');
                 setValue('websocket_port', config.websocket_port || 8765);
+
+                const ink = config.inky || {};
+                setChecked('inky_enabled', ink.enabled === true);
 
                 // Map generation
                 const mg = config.map_generation || {};
@@ -1202,6 +1218,9 @@
                 http_port: parseInt(document.getElementById('http_port').value),
                 websocket_host: document.getElementById('websocket_host').value,
                 websocket_port: parseInt(document.getElementById('websocket_port').value),
+                inky: {
+                    enabled: document.getElementById('inky_enabled').checked
+                },
                 map_generation: {
                     enabled: document.getElementById('map_enabled').checked,
                     min_interval_seconds: parseInt(document.getElementById('map_min_interval').value) || 300,

@@ -162,6 +162,11 @@ def validate_config(config):
             return 'database.cleanup_days must be a number'
         if db.get('cleanup_days', 0) < 0:
             return 'database.cleanup_days must be >= 0'
+
+    if 'inky' in config:
+        ink = config['inky']
+        if 'enabled' in ink and not isinstance(ink['enabled'], bool):
+            return 'inky.enabled must be a boolean'
     
     return None  # Valid
 
@@ -180,6 +185,10 @@ def load_config():
                     'min_altitude': 10000,
                     'max_distance_km': 500
                 }
+            if 'inky' not in config:
+                config['inky'] = {}
+            if 'enabled' not in config['inky']:
+                config['inky']['enabled'] = False
             return config
     except FileNotFoundError:
         print("=" * 80)
@@ -371,6 +380,10 @@ def should_generate_map(enriched_flights, config):
     """
     global last_map_generation_time, last_map_flight_icao
     
+    # Inky e-paper PNG generation (inky_ready.png) — off unless explicitly enabled
+    if not config.get('inky', {}).get('enabled', False):
+        return (False, None)
+
     map_config = config.get('map_generation', {})
     
     # Check if map generation is enabled
@@ -464,6 +477,9 @@ def generate_clear_skies_map(config):
         config: Configuration dictionary
     """
     global last_map_generation_time
+
+    if not config.get('inky', {}).get('enabled', False):
+        return
     
     clear_skies_config = config.get('clear_skies', {})
     receiver_lat = config.get('receiver_lat')
@@ -2979,11 +2995,15 @@ async def main():
     print("=" * 70)
     print()
     
-    # Check and report Inky display status
-    if HAS_INKY_DISPLAY:
-        print("✓ Inky display: Available (maps will be displayed automatically)")
+    # Inky e-paper: PNG generation + optional hardware display
+    inky_on = config.get('inky', {}).get('enabled', False)
+    if inky_on:
+        if HAS_INKY_DISPLAY:
+            print("✓ Inky: Image generation enabled; display hardware detected")
+        else:
+            print("⚠️  Inky: Image generation enabled, but display hardware not available (inky_ready.png will still be written)")
     else:
-        print("⚠️  Inky display: Not available (maps will be generated but not displayed)")
+        print("○ Inky: Image generation disabled (set inky.enabled to true if using an Inky display)")
     print()
     
     # Start HTTP server in background thread
