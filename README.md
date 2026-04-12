@@ -30,26 +30,23 @@ When an aircraft is **within range** of your antenna, **dump1090** listens for t
 
 ## Architecture
 
-The project includes three main scripts:
+Pi-Sky ships as **one program**, `flight_tracker_server.py`, that ties everything together:
 
 ```
-flight_server.py (unified server)
-    ├── HTTP server (serves web interface)
-    ├── WebSocket server (real-time updates)
-    └── Flight data collection (from dump1090)
+flight_tracker_server.py
+    ├── HTTP server (static files under web/, REST APIs, config)
+    ├── SSE stream at /events (live flight JSON to the browser)
+    └── Background flight loop (polls dump1090, enriches via APIs, optional DB snapshots)
             ↓
-    web/index.html (web client - card-based layout)
-
-flight_tracker_server.py (unified server with map support)
-    ├── HTTP server (serves web interface)
-    ├── WebSocket server (real-time updates)
-    └── Flight data collection (from dump1090)
-            ↓
-    web/index-maps.html (web client - map-based visualization)
-
-flight_tracker.py (terminal-only)
-    └── Terminal output (no web interface)
+    web/index-maps.html   — map UI (default “full” experience)
+    web/index.html        — card / list UI (split-flap section, etc.)
+    web/index-replay.html — history / replay
+    web/config.html       — settings UI
 ```
+
+**Supporting Python modules** (imported by the server): `flight_info.py` (routes, airports), `airline_logos.py`, `flight_db.py` (SQLite history), `map_to_png.py` (e-paper map tiles), and optionally `display_inky.py` for a connected Inky panel.
+
+**External data path:** dump1090 (or compatible feed) exposes `aircraft.json`; Pi-Sky fetches that URL and merges in third-party flight data. Live UI updates use **Server-Sent Events** (`EventSource` → `/events`), not a separate WebSocket port.
 
 ## Installation
 
@@ -81,7 +78,7 @@ Configuration options:
 - `hide_receiver`: Set to `true` to hide the receiver marker on the map (default: `false`)
 - `show_test_flight`: Set to `true` to show a test flight for debugging (default: `false`)
 - `http_host` / `http_port`: HTTP server bind address and port
-- `websocket_host` / `websocket_port`: WebSocket server bind address and port
+- `websocket_host` / `websocket_port`: Still validated in config; **live flight updates use SSE on the HTTP port** at `/events`, not a separate WebSocket listener.
 
 ## Usage
 
@@ -93,9 +90,9 @@ python3 flight_tracker_server.py
 ```
 
 This starts:
-- HTTP server on port 8080 (serves web interface)
-- WebSocket server on port 8765 (real-time updates)
-- Flight data collection (fetches from dump1090 every 5 seconds)
+- HTTP server on the configured port (serves the web UI and `/events`)
+- SSE stream at `/events` for live updates in the browser
+- Flight loop that polls dump1090 about once per second (enrichment and DB snapshot cadence may vary)
 
 Then open your browser to:
 ```
@@ -111,29 +108,15 @@ The map interface provides:
 - Receiver location marker (configurable)
 - Airport markers (e.g., BER - Berlin Brandenburg Airport)
 
-### Card-Based Web Server
+### Card-based layout (same server)
 
-Run the unified server with card-based layout (no map):
-```bash
-python3 flight_server.py
-```
+With `flight_tracker_server.py` already running, open the card UI at:
 
-This starts the same servers as above, but serves:
 ```
 http://localhost:8080/index.html
 ```
 
-The card interface provides:
-- Grid-based flight cards
-- All flight details in compact card format
-- No map visualization
-
-### Terminal Only Mode
-
-If you just want terminal output without the web interface:
-```bash
-python3 flight_tracker.py
-```
+Same backend as the map view; only the front-end page differs.
 
 ## Web Interfaces
 
@@ -146,14 +129,14 @@ The map-based interface provides:
 - Click aircraft markers to see detailed flight cards with popup
 - Receiver location marker (can be hidden via config)
 - Airport markers for nearby airports
-- Real-time flight updates via WebSocket
+- Real-time flight updates via SSE (`/events`)
 - Connection status indicator
 - Flight statistics
 
 ### Card Interface (`index.html`)
 
 The card-based interface provides:
-- Real-time flight updates via WebSocket
+- Real-time flight updates via SSE (`/events`)
 - Beautiful grid-based card layout
 - Connection status indicator
 - Flight statistics
@@ -163,18 +146,21 @@ The card-based interface provides:
 
 ## Files
 
-**Main Scripts:**
-- `flight_tracker_server.py` - Unified server with map support (HTTP + WebSocket + data collection)
-- `flight_server.py` - Unified server with card-based layout (HTTP + WebSocket + data collection)
-- `flight_tracker.py` — Terminal-only Pi-Sky / dump1090 viewer
+**Main script:**
+- `flight_tracker_server.py` — HTTP + SSE + flight collection and enrichment
 
 **Modules:**
-- `flight_info.py` - Route lookup utilities (adsb.lol API, OpenFlights database)
-- `airline_logos.py` - Airline logo/name lookup (OpenFlights database, Google favicon service)
+- `flight_info.py` — Route and airport utilities (adsb.lol API, OpenFlights data)
+- `airline_logos.py` — Airline name/logo helpers
+- `flight_db.py` — SQLite flight history for replay and mini-maps
+- `map_to_png.py` — Raster map generation for Inky and previews
+- `display_inky.py` — Optional hardware display output
 
-**Web Interface:**
-- `web/index-maps.html` - Map-based web interface (used by flight_tracker_server.py)
-- `web/index.html` - Card-based web interface (used by flight_server.py)
+**Web interface:**
+- `web/index-maps.html` — Map UI
+- `web/index.html` — Card / list UI
+- `web/index-replay.html` — Replay / history
+- `web/config.html` — Configuration
 
 **Configuration & Data:**
 - `config.json` - Configuration file
@@ -195,6 +181,6 @@ python3 flight_info.py 3c55c7 EWG1AN
 
 ## Troubleshooting
 
-- **WebSocket not connecting**: Check firewall settings and ensure port 8765 is open
+- **Live updates not streaming**: Confirm the browser can reach `http://<host>:<port>/events` (same origin as the UI; check reverse proxies and mixed content)
 - **No flights displayed**: Verify dump1090 URL is correct and accessible
 - **Routes not found**: Ensure aircraft have callsigns and are in adsb.lol database
