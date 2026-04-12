@@ -1,40 +1,48 @@
 #!/bin/bash
-# Script to install flight-tracker.service as a systemd service
+# Install flight-tracker.service (Pi-Sky) as a systemd system service
 
 set -e
 
 SERVICE_NAME="flight-tracker"
 SERVICE_FILE="flight-tracker.service"
-PROJECT_DIR="/home/pi/berrybase_demos/flightaware_demo"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
 SYSTEMD_DIR="/etc/systemd/system"
 
-echo "Installing Pi-Sky service..."
+echo "Installing Pi-Sky service from $PROJECT_DIR..."
 
-# Check if running as root or with sudo
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo "This script needs to be run with sudo"
     echo "Usage: sudo ./install_service.sh"
     exit 1
 fi
 
-# Check if service file exists
 if [ ! -f "$PROJECT_DIR/$SERVICE_FILE" ]; then
     echo "Error: Service file not found at $PROJECT_DIR/$SERVICE_FILE"
     exit 1
 fi
 
-# Copy service file to systemd directory
+LEGACY_CONFIG="/home/pi/berrybase_demos/flightaware_demo/config.json"
+if [ ! -f "$PROJECT_DIR/config.json" ] && [ -f "$LEGACY_CONFIG" ]; then
+    echo "Copying config from legacy flight tracker install..."
+    cp "$LEGACY_CONFIG" "$PROJECT_DIR/config.json"
+    chown pi:pi "$PROJECT_DIR/config.json"
+fi
+
+if [ ! -f "$PROJECT_DIR/config.json" ]; then
+    echo "Note: No config.json yet. Copy from template after install:"
+    echo "  cp $PROJECT_DIR/config_template.json $PROJECT_DIR/config.json"
+fi
+
+chmod +x "$PROJECT_DIR/start_flight_tracker.sh"
+
 echo "Copying service file to $SYSTEMD_DIR..."
 cp "$PROJECT_DIR/$SERVICE_FILE" "$SYSTEMD_DIR/$SERVICE_FILE"
-
-# Set proper permissions
 chmod 644 "$SYSTEMD_DIR/$SERVICE_FILE"
 
-# Reload systemd daemon
 echo "Reloading systemd daemon..."
 systemctl daemon-reload
 
-# Enable service to start on boot
 echo "Enabling service to start on boot..."
 systemctl enable "$SERVICE_NAME.service"
 
@@ -55,5 +63,3 @@ echo "  sudo systemctl stop $SERVICE_NAME"
 echo ""
 echo "To disable auto-start on boot, run:"
 echo "  sudo systemctl disable $SERVICE_NAME"
-
-

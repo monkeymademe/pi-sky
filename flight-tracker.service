@@ -6,12 +6,12 @@ After=network.target
 Type=simple
 User=pi
 Group=pi
-WorkingDirectory=/home/pi/berrybase_demos/flightaware_demo
+WorkingDirectory=/home/pi/pi-sky
 Environment="HOME=/home/pi"
 Environment="USER=pi"
-Environment="PATH=/home/pi/flightaware-venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/pi/pi-sky/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/bin/bash /home/pi/berrybase_demos/flightaware_demo/start_flight_tracker.sh
+ExecStart=/bin/bash /home/pi/pi-sky/start_flight_tracker.sh
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -23,5 +23,3 @@ PrivateTmp=false
 
 [Install]
 WantedBy=multi-user.target
-
-

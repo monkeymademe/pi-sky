@@ -2,12 +2,11 @@
 # Script to start Pi-Sky in kiosk mode
 # This opens Chromium in fullscreen kiosk mode
 
-# Get the server URL from config.json or use default
-CONFIG_FILE="/home/pi/berrybase_demos/flightaware_demo/config.json"
+CONFIG_FILE="/home/pi/pi-sky/config.json"
 if [ -f "$CONFIG_FILE" ]; then
     HTTP_HOST=$(grep -o '"http_host": "[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     HTTP_PORT=$(grep -o '"http_port": [0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')
-    
+
     if [ -z "$HTTP_HOST" ]; then
         HTTP_HOST="localhost"
     fi
@@ -38,6 +37,17 @@ else
     echo "Install with: sudo apt-get install unclutter"
 fi
 
+# Prefer chromium-browser (legacy) or chromium (current Raspberry Pi OS)
+CHROME=""
+if command -v chromium-browser &> /dev/null; then
+    CHROME="chromium-browser"
+elif command -v chromium &> /dev/null; then
+    CHROME="chromium"
+else
+    echo "Error: Neither chromium-browser nor chromium found in PATH."
+    exit 1
+fi
+
 # Start Chromium in kiosk mode
 # --kiosk: Fullscreen mode
 # --noerrdialogs: Suppress error dialogs
@@ -48,7 +58,7 @@ fi
 # --check-for-update-interval=31536000: Don't check for updates
 # --disable-features=TranslateUI: Disable translation UI
 # --disable-ipc-flooding-protection: Allow rapid IPC
-chromium-browser \
+"$CHROME" \
     --kiosk \
     --noerrdialogs \
     --disable-infobars \
@@ -86,4 +96,3 @@ sleep 2
 
 # Keep script running
 wait
-

@@ -9,7 +9,7 @@ User=pi
 Group=pi
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/pi/.Xauthority"
-ExecStart=/home/pi/berrybase_demos/flightaware_demo/start_kiosk.sh
+ExecStart=/home/pi/pi-sky/start_kiosk.sh
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -20,5 +20,3 @@ NoNewPrivileges=true
 
 [Install]
 WantedBy=graphical.target
-
-

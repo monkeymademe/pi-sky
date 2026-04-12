@@ -1,43 +1,37 @@
 #!/bin/bash
-# Script to install flight-tracker as a user systemd service
-# This version doesn't require sudo - it installs as a user service
+# Install Pi-Sky as a user systemd service (no sudo for the unit file itself)
 
 set -e
 
 SERVICE_NAME="flight-tracker"
 SERVICE_FILE="flight-tracker-user.service"
-PROJECT_DIR="/home/pi/berrybase_demos/flightaware_demo"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
 USER_SYSTEMD_DIR="$HOME/.config/systemd/user"
 
-echo "Installing Pi-Sky as a user service..."
+echo "Installing Pi-Sky as a user service from $PROJECT_DIR..."
 
-# Check if service file exists
 if [ ! -f "$PROJECT_DIR/$SERVICE_FILE" ]; then
     echo "Error: Service file not found at $PROJECT_DIR/$SERVICE_FILE"
     exit 1
 fi
 
-# Create user systemd directory if it doesn't exist
 mkdir -p "$USER_SYSTEMD_DIR"
 
-# Copy service file to user systemd directory
 echo "Copying service file to $USER_SYSTEMD_DIR..."
 cp "$PROJECT_DIR/$SERVICE_FILE" "$USER_SYSTEMD_DIR/$SERVICE_NAME.service"
-
-# Set proper permissions
 chmod 644 "$USER_SYSTEMD_DIR/$SERVICE_NAME.service"
 
-# Reload systemd user daemon
 echo "Reloading systemd user daemon..."
 systemctl --user daemon-reload
 
-# Enable service to start on boot (for user session)
-echo "Enabling service to start on boot..."
+echo "Enabling service to start on boot (user session)..."
 systemctl --user enable "$SERVICE_NAME.service"
 
-# Enable lingering so the service can start even when user is not logged in
-echo "Enabling user service lingering..."
-sudo loginctl enable-linger pi
+echo "Enabling user service lingering (requires sudo once)..."
+if command -v loginctl &> /dev/null; then
+    sudo loginctl enable-linger "$USER" || true
+fi
 
 echo ""
 echo "✓ User service installed successfully!"
@@ -56,4 +50,3 @@ echo "  systemctl --user stop $SERVICE_NAME"
 echo ""
 echo "To disable auto-start on boot, run:"
 echo "  systemctl --user disable $SERVICE_NAME"
-

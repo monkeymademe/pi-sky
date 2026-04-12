@@ -2800,6 +2800,13 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             print(f"SSE client disconnected. Total clients: {remaining}")
     
     def end_headers(self):
+        # Kiosk browsers (Chromium) cache SVG/CSS aggressively; avoid stale UI after deploys
+        path = self.path.split('?', 1)[0]
+        if not path.startswith('/api') and path != '/events':
+            if path in ('/', '/index.html') or path.endswith(
+                ('.html', '.htm', '.css', '.js', '.svg', '.ico')
+            ) or path.startswith('/assets/'):
+                self.send_header('Cache-Control', 'no-cache, must-revalidate')
         self.send_header('Access-Control-Allow-Origin', '*')
         super().end_headers()
     
