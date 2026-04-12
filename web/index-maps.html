@@ -127,9 +127,9 @@
             flex-shrink: 0;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             display: flex;
-            justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
+            gap: 12px 20px;
             transition: background 0.3s ease;
             position: relative;
         }
@@ -144,6 +144,16 @@
             display: flex;
             align-items: center;
             gap: 12px;
+            flex-shrink: 0;
+        }
+
+        .header-tools {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 16px 24px;
+            margin-left: auto;
         }
 
         .header-brand h1 {
@@ -204,7 +214,6 @@
             height: 12px;
             border-radius: 50%;
             display: inline-block;
-            margin-right: 8px;
         }
         
         .status-indicator.connected {
@@ -684,36 +693,37 @@
                 <img src="assets/pi-sky-mark.svg" width="44" height="44" alt="" decoding="async">
                 <h1>Pi-Sky · Map</h1>
             </div>
-            <div class="nav-links">
-                <a href="index.html">Flight List</a>
-                <a href="index-maps.html" class="active">Flight Map</a>
-                <a href="index-replay.html">History</a>
-                <a href="config.html">⚙️ Config</a>
-            </div>
-            <div class="status">
-                <div>
-                    <span class="status-indicator disconnected" id="statusIndicator"></span>
-                    <span id="connectionStatus">Disconnected</span>
+            <div class="header-tools">
+                <div class="nav-links">
+                    <a href="index.html">Flight List</a>
+                    <a href="index-maps.html" class="active">Flight Map</a>
+                    <a href="index-replay.html">History</a>
+                    <a href="config.html">⚙️ Config</a>
                 </div>
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-value" id="activeFlights">0</div>
-                        <div class="stat-label">Active Flights</div>
+                <div class="status">
+                    <div id="connectionStatus" role="status" aria-live="polite" aria-atomic="true" aria-label="Disconnected">
+                        <span class="status-indicator disconnected" id="statusIndicator"></span>
                     </div>
-                    <div class="stat">
-                        <div class="stat-value" id="totalFlights">0</div>
-                        <div class="stat-label">Total Detected</div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-value" id="activeFlights">0</div>
+                            <div class="stat-label">Active Flights</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="totalFlights">0</div>
+                            <div class="stat-label">Total Detected</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="theme-toggle-container">
-                <div class="theme-toggle-icon" id="themeIcon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
-                        <path id="themeIconPath" d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
-                    </svg>
-                </div>
-                <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
-                    <div class="theme-toggle-slider"></div>
+                <div class="theme-toggle-container">
+                    <div class="theme-toggle-icon" id="themeIcon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 16 16">
+                            <path id="themeIconPath" d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/>
+                        </svg>
+                    </div>
+                    <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                        <div class="theme-toggle-slider"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -892,14 +902,15 @@
         
         function updateConnectionStatus(connected, message) {
             const indicator = document.getElementById('statusIndicator');
-            const status = document.getElementById('connectionStatus');
-            
+            const region = document.getElementById('connectionStatus');
+            const label = message || (connected ? 'Connected' : 'Disconnected');
             if (connected) {
                 indicator.className = 'status-indicator connected';
-                status.textContent = message || 'Connected';
             } else {
                 indicator.className = 'status-indicator disconnected';
-                status.textContent = message || 'Disconnected';
+            }
+            if (region) {
+                region.setAttribute('aria-label', label);
             }
         }
         
