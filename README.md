@@ -195,41 +195,74 @@ All pages use the same SSE stream (`/events`) and backend.
 
 ## Files
 
-**Main script:**
-- `flight_tracker_server.py` — HTTP + SSE + flight collection and enrichment
+**Application**
 
-**Modules:**
-- `flight_info.py` — Route and airport utilities (adsb.lol API, OpenFlights data)
-- `airline_logos.py` — Airline name/logo helpers
-- `flight_db.py` — SQLite flight history for replay and mini-maps
-- `map_to_png.py` — Raster map generation for Inky and previews
-- `display_inky.py` — Optional hardware display output
+| Path | Role |
+|------|------|
+| `flight_tracker_server.py` | Main server: HTTP, SSE `/events`, dump1090 poll loop, APIs |
+| `flight_info.py` | Route/airport enrichment (adsb.lol, OpenFlights cache) |
+| `airline_logos.py` | Airline names / logos |
+| `flight_db.py` | SQLite history for replay and per-flight APIs |
+| `map_to_png.py` | Map raster generation (Inky and static map previews) |
+| `display_inky.py` | Optional Pimoroni Inky output |
+| `requirements.txt` | Python dependencies |
+| `config_template.json` | Example configuration (copy to `config.json`) |
 
-**Web interface:**
-- `web/index-maps.html` — Map UI
-- `web/index.html` — Card / list UI
-- `web/index-replay.html` — Replay / history
-- `web/config.html` — Configuration
+**Web (`web/`)**
 
-**Configuration & Data:**
-- `config.json` - Configuration file
-- `airlines_cache.dat` - Cached airline data (auto-generated)
-- `airports_cache.dat` - Cached airport data (auto-generated)
+| Path | Role |
+|------|------|
+| `index-maps.html`, `index.html`, `index-replay.html`, `config.html` | Main UIs |
+| `assets/` | Logos and marks (SVG) |
+| `flipoff/` | Split-flap display assets for the card view |
+
+**Setup and services**
+
+| Path | Role |
+|------|------|
+| `setup_venv.sh` | Create `venv/` and install requirements |
+| `start_flight_tracker.sh` | Launch server (activates `venv` if present) |
+| `start_kiosk.sh` | Chromium kiosk pointed at the map URL |
+| `install_service.sh`, `install_user_service.sh`, `install_kiosk.sh` | Install systemd units |
+| `flight-tracker.service`, `flight-tracker-user.service`, `flight-tracker-kiosk.service` | Unit files |
+
+**Data (runtime; not all tracked in git)**
+
+- `config.json` — Your live settings (copy from `config_template.json`; listed in `.gitignore` so it is not committed by default).
+- `airlines_cache.dat`, `airports_cache.dat` — Downloaded/cached OpenFlights-derived data (tracked in repo as seeds; may be refreshed).
+- `flights.db` — SQLite database when database features are enabled (typically gitignored).
+- `inky_ready.png` — Generated e-paper image when Inky map output runs (gitignored).
+- `venv/` — Local virtualenv (gitignored).
 
 ## Testing
 
-Test flight lookup manually:
+**Manual route lookup** (same Python env as Pi-Sky):
+
 ```bash
-python3 flight_info.py <ICAO> <CALLSIGN> [LAT] [LON]
+cd /path/to/pi-sky
+./venv/bin/python3 flight_info.py <ICAO> <CALLSIGN> [LAT] [LON]
 ```
 
 Example:
+
 ```bash
-python3 flight_info.py 3c55c7 EWG1AN
+./venv/bin/python3 flight_info.py 3c55c7 EWG1AN
 ```
+
+**Quick server check** — with the server running, the event stream endpoint should return HTTP `200` (`text/event-stream`). Stop after a couple of seconds so `curl` does not wait on the open SSE connection:
+
+```bash
+curl -sS -m 3 -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:<http_port>/events"
+```
+
+Replace `<http_port>` with the value from `config.json`.
 
 ## Troubleshooting
 
-- **Live updates not streaming**: Confirm the browser can reach `http://<host>:<port>/events` (same origin as the UI; check reverse proxies and mixed content)
-- **No flights displayed**: Verify dump1090 URL is correct and accessible
-- **Routes not found**: Ensure aircraft have callsigns and are in adsb.lol database
+- **Live updates not streaming** — Open the UI and DevTools: confirm `EventSource` connects to `http://<host>:<port>/events` (same scheme/host/port as the page). Reverse proxies must forward long-lived GET streams; avoid buffering `/events`.
+- **No aircraft / empty map** — Check dump1090 is running and `dump1090_url` in `config.json` loads in a browser or `curl` (expect JSON with an `aircraft` array). Pi-Sky must reach that host from the Pi (firewall, wrong IP, or wrong port).
+- **Routes or photos missing** — Many flights need a **callsign**; enrichment depends on third-party APIs (e.g. adsb.lol). Not every aircraft will have a full route.
+- **`pip install` / import errors for `cairosvg` or Cairo** — Install system Cairo dev packages first (see **Installation**), then reinstall requirements.
+- **Inky / map PNG errors** — Set `inky.enabled` only when using hardware; ensure `map_to_png.py` dependencies and (for the panel) Inky drivers work on your OS.
+- **Saving config in the UI fails** — The API runs `validate_config`: required keys, numeric lat/lon, integer ports, etc. Fix the reported field or edit `config.json` manually.
+- **Permission errors** — Run from a user that can read `config.json` and write the working directory (for DB, caches, and `inky_ready.png` when enabled).
