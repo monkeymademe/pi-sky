@@ -50,10 +50,31 @@ flight_tracker_server.py
 
 ## Installation
 
-1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. **Prerequisites**
+   - **Python 3** with `pip` and `venv`.
+   - A running **dump1090** (or compatible) feed reachable at the URL you will put in `config.json` (Pi-Sky does not install the decoder for you).
+   - On **Raspberry Pi OS / Debian**, install Cairo headers **before** `pip` so `cairosvg` can build (see `requirements.txt`):
+     ```bash
+     sudo apt-get update
+     sudo apt-get install -y libcairo2-dev
+     ```
+
+2. **Python environment** (recommended; matches `setup_venv.sh` and the bundled systemd helpers):
+   ```bash
+   cd /path/to/pi-sky
+   ./setup_venv.sh
+   ```
+   Or manually:
+   ```bash
+   python3 -m venv venv
+   ./venv/bin/pip install --upgrade pip
+   ./venv/bin/pip install -r requirements.txt
+   ```
+
+3. **Configuration file** — copy the template and edit (see below):
+   ```bash
+   cp config_template.json config.json
+   ```
 
 ## Configuration
 
