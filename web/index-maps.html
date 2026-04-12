@@ -107,14 +107,15 @@
             transition: background 0.3s ease, color 0.3s ease;
         }
 
-        /* Same content width as index.html / config.html / index-replay.html */
+        /* Same content width as other pages; explicit height so flex children (#map) get space */
         .container.map-page {
             max-width: 1400px;
             margin: 0 auto;
             width: 100%;
             display: flex;
             flex-direction: column;
-            min-height: calc(100vh - 40px);
+            height: calc(100vh - 40px);
+            min-height: 320px;
             box-sizing: border-box;
         }
         
@@ -671,7 +672,7 @@
                 padding: 12px;
             }
             .container.map-page {
-                min-height: calc(100vh - 24px);
+                height: calc(100vh - 24px);
             }
         }
     </style>
