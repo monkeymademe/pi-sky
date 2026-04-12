@@ -138,67 +138,60 @@ Use the **config page** in the web UI (`config.html`) or edit `config.json` dire
 
 ## Usage
 
-### Map-Based Web Server (Recommended)
+Run the server from the **project directory** (it loads `config.json` and serves `web/` relative to the current working directory).
 
-Run the unified server with interactive map support:
 ```bash
-python3 flight_tracker_server.py
+cd /path/to/pi-sky
+./venv/bin/python3 flight_tracker_server.py
 ```
 
-This starts:
-- HTTP server on the configured port (serves the web UI and `/events`)
-- SSE stream at `/events` for live updates in the browser
-- Flight loop that polls dump1090 about once per second (enrichment and DB snapshot cadence may vary)
+If you use a venv, activate it first, or call `./venv/bin/python3` as above. With dependencies installed globally, `python3 flight_tracker_server.py` is fine.
 
-Then open your browser to:
+**What starts**
+
+- HTTP server on **`http_host`:`http_port`** (from `config.json`; template default **5050**, or **8080** if those keys are omitted at startup)
+- **SSE** live stream at **`/events`** on that same port
+- Background loop that polls dump1090 about **once per second** (API enrichment and DB snapshots run on their own cadence)
+
+**URLs** (replace host/port with your settings; same origin as the UI for `/events`):
+
+| Page | Path |
+|------|------|
+| Map (main) | `http://<host>:<port>/index-maps.html` |
+| Card / list UI | `http://<host>:<port>/index.html` |
+| Replay / history | `http://<host>:<port>/index-replay.html` |
+| Settings | `http://<host>:<port>/config.html` |
+
+Example for a Pi on the LAN with default template port: `http://192.168.1.10:5050/index-maps.html`.
+
+**systemd (optional)** — install and enable the bundled unit so Pi-Sky starts at boot (expects `/home/pi/pi-sky` and `venv`):
+
+```bash
+sudo ./install_service.sh
+sudo systemctl start flight-tracker
 ```
-http://localhost:8080/index-maps.html
-```
 
-The map interface provides:
-- Interactive Leaflet map with OpenStreetMap tiles
-- Aircraft markers showing real-time positions
-- Aircraft rotation based on heading/track
-- Heading indicator lines
-- Click aircraft markers to see detailed flight cards
-- Receiver location marker (configurable)
-- Airport markers (e.g., BER - Berlin Brandenburg Airport)
+**Kiosk / fullscreen browser (optional)** — on a desktop session, `start_kiosk.sh` opens Chromium pointed at the map URL (see script for details).
 
-### Card-based layout (same server)
+### Map view (recommended entry point)
 
-With `flight_tracker_server.py` already running, open the card UI at:
+The map UI (`index-maps.html`) includes:
 
-```
-http://localhost:8080/index.html
-```
+- Leaflet map (OpenStreetMap tiles), aircraft markers, heading lines, popups
+- Receiver marker (optional hide via config) and airport markers when configured
 
-Same backend as the map view; only the front-end page differs.
+### Card layout
 
-## Web Interfaces
+Same server; open `index.html` for the grid / split-flap style layout without the main map chrome.
 
-### Map Interface (`index-maps.html`)
+## Web interfaces (detail)
 
-The map-based interface provides:
-- Interactive Leaflet map with real-time aircraft positions
-- Aircraft markers that rotate based on heading/track direction
-- Heading indicator lines showing flight direction
-- Click aircraft markers to see detailed flight cards with popup
-- Receiver location marker (can be hidden via config)
-- Airport markers for nearby airports
-- Real-time flight updates via SSE (`/events`)
-- Connection status indicator
-- Flight statistics
+All pages use the same SSE stream (`/events`) and backend.
 
-### Card Interface (`index.html`)
-
-The card-based interface provides:
-- Real-time flight updates via SSE (`/events`)
-- Beautiful grid-based card layout
-- Connection status indicator
-- Flight statistics
-- Route information (origin → destination with country flags)
-- Aircraft details (altitude, speed, track, position, aircraft type)
-- Airline logos
+- **`index-maps.html`** — Full-screen map, aircraft popups, statistics.
+- **`index.html`** — Card grid, route lines, airline logos, split-flap section for the latest flight.
+- **`index-replay.html`** — Browse stored flights and replay tracks (requires database enabled).
+- **`config.html`** — Edit settings and POST to `/api/config`.
 
 ## Files
 
