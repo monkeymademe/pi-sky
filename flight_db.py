@@ -768,22 +768,26 @@ class FlightDatabase:
     
     def end_flight(self, flight_id, status='landed'):
         """
-        Mark a flight as ended
+        Mark a flight as ended.
         
-        Args:
-            flight_id: ID of the flight to end
-            status: Final status (landed, unknown, etc.)
+        Sets last_seen to the timestamp of the last stored position when available,
+        otherwise the current time (e.g. no positions were recorded).
         """
         with self.lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            now = datetime.now().isoformat()
+            cursor.execute(
+                'SELECT MAX(ts) FROM positions WHERE flight_id = ?', (flight_id,)
+            )
+            row = cursor.fetchone()
+            last_pos_ts = row[0] if row and row[0] else None
+            ended_at = last_pos_ts if last_pos_ts else datetime.now().isoformat()
             
             cursor.execute(f'''
                 UPDATE flights 
                 SET {self.last_seen_col} = ?, status = ?
                 WHERE id = ?
-            ''', (now, status, flight_id))
+            ''', (ended_at, status, flight_id))
             
             conn.commit()
             conn.close()
@@ -909,7 +913,8 @@ class FlightDatabase:
             cursor = conn.cursor()
             
             query = '''
-                SELECT f.*, a.registration, a.type, a.model, a.manufacturer
+                SELECT f.*, a.registration, a.type, a.model, a.manufacturer,
+                       (SELECT MAX(p.ts) FROM positions p WHERE p.flight_id = f.id) AS last_position_ts
                 FROM flights f
                 LEFT JOIN aircraft a ON f.aircraft_icao = a.icao
                 WHERE 1=1
@@ -957,6 +962,10 @@ class FlightDatabase:
                     flight_dict['first_seen'] = flight_dict.pop('start_time')
                 if self.last_seen_col == 'end_time' and 'end_time' in flight_dict:
                     flight_dict['last_seen'] = flight_dict.pop('end_time')
+                last_pos_ts = flight_dict.pop('last_position_ts', None)
+                # DB leaves last_seen NULL while flight is "active"; expose last position time for the UI
+                if flight_dict.get('last_seen') is None and last_pos_ts:
+                    flight_dict['last_seen'] = last_pos_ts
                 result.append(flight_dict)
             return result
         except sqlite3.OperationalError as e:
@@ -990,7 +999,8 @@ class FlightDatabase:
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT f.*, a.registration, a.type, a.model, a.manufacturer
+                SELECT f.*, a.registration, a.type, a.model, a.manufacturer,
+                       (SELECT MAX(p.ts) FROM positions p WHERE p.flight_id = f.id) AS last_position_ts
                 FROM flights f
                 LEFT JOIN aircraft a ON f.aircraft_icao = a.icao
                 WHERE f.id = ?
@@ -1006,6 +1016,9 @@ class FlightDatabase:
                     flight_dict['first_seen'] = flight_dict.pop('start_time')
                 if self.last_seen_col == 'end_time' and 'end_time' in flight_dict:
                     flight_dict['last_seen'] = flight_dict.pop('end_time')
+                last_pos_ts = flight_dict.pop('last_position_ts', None)
+                if flight_dict.get('last_seen') is None and last_pos_ts:
+                    flight_dict['last_seen'] = last_pos_ts
                 return flight_dict
             return None
         except Exception as e:
