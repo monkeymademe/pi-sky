@@ -1297,7 +1297,7 @@
             refreshSelectionUI();
             const positioned = latestFlights.filter(f => f.lat != null && f.lon != null);
             if (positioned.length) {
-                centerOnAllFlights(positioned, latestStats, { force: true });
+                centerOnAllFlights(positioned, latestStats, { force: true, smooth: true });
             } else {
                 focusOnFallback(latestStats, { force: true });
             }
@@ -1383,7 +1383,10 @@
             }
         }
 
-        function centerOnAllFlights(flights, stats, { force = false } = {}) {
+        /** Pixel inset around aircraft when fitting the map (smaller = tighter framing). */
+        const FIT_BOUNDS_PADDING = [18, 18];
+
+        function centerOnAllFlights(flights, stats, { force = false, smooth = false } = {}) {
             const flightsWithPosition = flights.filter(f => f.lat != null && f.lon != null);
 
             if (flightsWithPosition.length === 0) {
@@ -1405,7 +1408,7 @@
 
             if (!force && map) {
                 const currentBounds = map.getBounds();
-                const innerBounds = currentBounds.pad(-0.08); // leave a small margin
+                const innerBounds = currentBounds.pad(-0.05);
                 const allFlightsVisible = flightsWithPosition.every(flight =>
                     innerBounds.contains([flight.lat, flight.lon])
                 );
@@ -1428,7 +1431,16 @@
                 bounds.extend([stats.receiver_lat, stats.receiver_lon]);
             }
 
-            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
+            const fitOpts = {
+                padding: FIT_BOUNDS_PADDING,
+                maxZoom: 13,
+                animate: smooth,
+            };
+            if (smooth) {
+                fitOpts.duration = 1.15;
+                fitOpts.easeLinearity = 0.22;
+            }
+            map.fitBounds(bounds, fitOpts);
             lastAutoFitKey = key;
         }
 
@@ -1454,7 +1466,7 @@
                     autoFitEnabled = true;
                     lastAutoFitKey = null;
                     refreshSelectionUI();
-                    centerOnAllFlights(flightsWithPosition, stats, { force: true });
+                    centerOnAllFlights(flightsWithPosition, stats, { force: true, smooth: true });
                 }
                 return;
             }
