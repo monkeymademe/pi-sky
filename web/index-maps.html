@@ -941,6 +941,17 @@
             if (lat === null || lat === undefined || lon === null || lon === undefined) return 'N/A';
             return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
         }
+
+        function sanitizeAircraftLabel(value) {
+            if (value == null || value === '') return '';
+            const s = String(value).trim();
+            const low = s.toLowerCase();
+            if (!low) return '';
+            const bad = new Set(['adsb_icao', 'adsb_icao_nt', 'adsb_other', 'adsr_icao', 'adsr_other', 'tisb_icao', 'tisb_trackid', 'mlat', 'mode_s', 'unknown']);
+            if (bad.has(low)) return '';
+            if (/^(adsb_|adsr_|tisb_)/.test(low)) return '';
+            return s;
+        }
         
         function getCountryFlag(country) {
             // Map country names to flag emojis
@@ -1093,6 +1104,10 @@
                 const originCountry = flight.origin_country ? `${getCountryFlag(flight.origin_country)} ${flight.origin_country}` : '';
                 const destCode = flight.destination || '---';
                 const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
+                const acModel = sanitizeAircraftLabel(flight.aircraft_model);
+                const acType = sanitizeAircraftLabel(flight.aircraft_type);
+                const acKind = acModel || acType;
+                const hasAircraftKind = !!acKind;
                 
                 const airlineLogoHtml = flight.airline_logo 
                     ? `<img src="${flight.airline_logo}" alt="${flight.airline_code || 'Airline'}" style="width: 24px; height: 24px; object-fit: contain; border-radius: 3px; background: rgba(255,255,255,0.2); padding: 2px;" onerror="this.style.display='none'">`
@@ -1181,12 +1196,12 @@
                             <div style="font-weight: bold; color: ${textPrimary}; font-family: monospace; font-size: 0.75em;">${formatCoordinates(flight.lat, flight.lon)}</div>
                         </div>
                         ` : ''}
-                        ${flight.aircraft_model || flight.aircraft_type ? `
+                        ${hasAircraftKind || flight.aircraft_registration ? `
                         <div style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
                             <div style="flex: 1;">
                                 <div style="font-size: 0.7em; text-transform: uppercase; color: ${textSecondary}; letter-spacing: 0.5px; margin-bottom: 4px;">Aircraft</div>
                                 <div style="font-weight: bold; color: ${textPrimary};">
-                                    ${flight.aircraft_model || flight.aircraft_type || 'N/A'}
+                                    ${acKind || 'N/A'}
                                     ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
                                 </div>
                             </div>

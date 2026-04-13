@@ -26,7 +26,14 @@ warnings.filterwarnings('ignore', message='.*urllib3.*')
 import requests
 import subprocess
 
-from flight_info import get_flight_route, get_aircraft_info_adsblol, get_aircraft_photos_jetapi, get_airport_coordinates, get_city_name_from_coordinates
+from flight_info import (
+    get_flight_route,
+    get_aircraft_info_adsblol,
+    get_aircraft_photos_jetapi,
+    get_airport_coordinates,
+    get_city_name_from_coordinates,
+    sanitize_aircraft_label_for_display,
+)
 from airline_logos import get_airline_info
 from flight_db import FlightDatabase
 
@@ -1008,6 +1015,15 @@ def process_aircraft_data(aircraft_data):
             enriched['full_route'] = flight_memory[icao].get('full_route')
             enriched['full_route_iata'] = flight_memory[icao].get('full_route_iata')
             enriched['is_round_trip'] = flight_memory[icao].get('is_round_trip', False)
+            # Strip ADS-B track/mode tokens (e.g. adsb_icao) mistaken for aircraft type — and clear from memory
+            if flight_memory[icao].get('aircraft_model') and sanitize_aircraft_label_for_display(
+                flight_memory[icao].get('aircraft_model')
+            ) is None:
+                flight_memory[icao]['aircraft_model'] = None
+            if flight_memory[icao].get('aircraft_type') and sanitize_aircraft_label_for_display(
+                flight_memory[icao].get('aircraft_type')
+            ) is None:
+                flight_memory[icao]['aircraft_type'] = None
             enriched['aircraft_model'] = flight_memory[icao].get('aircraft_model')
             enriched['aircraft_type'] = flight_memory[icao].get('aircraft_type')
             enriched['aircraft_registration'] = flight_memory[icao].get('aircraft_registration')

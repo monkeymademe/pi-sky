@@ -54,6 +54,12 @@ import os
 import sys
 import io
 
+try:
+    from flight_info import sanitize_aircraft_label_for_display
+except ImportError:
+    def sanitize_aircraft_label_for_display(value):
+        return None if value is None else str(value).strip() or None
+
 # Set up library path for Cairo on macOS (Homebrew)
 # Monkey-patch ctypes.util.find_library to check Homebrew first
 if sys.platform == 'darwin':
@@ -932,8 +938,8 @@ def render_flight_card_pil(flight_data, card_width=400, inky_mode=False):
     squawk = flight_data.get('squawk', None)
     lat = flight_data.get('lat', None)
     lon = flight_data.get('lon', None)
-    aircraft_model = flight_data.get('aircraft_model', None)
-    aircraft_type = flight_data.get('aircraft_type', None)
+    aircraft_model = sanitize_aircraft_label_for_display(flight_data.get('aircraft_model'))
+    aircraft_type = sanitize_aircraft_label_for_display(flight_data.get('aircraft_type'))
     aircraft_registration = flight_data.get('aircraft_registration', None)
     
     # Calculate footer items
@@ -1088,7 +1094,7 @@ def render_flight_card_pil(flight_data, card_width=400, inky_mode=False):
     
     # Aircraft info (full width)
     aircraft_y = footer_start_y_content + num_grid_rows * footer_row_height + footer_row_height
-    aircraft_text = aircraft_model or aircraft_type or 'N/A'
+    aircraft_text = (aircraft_model or aircraft_type) or 'N/A'
     if aircraft_registration:
         aircraft_text += f" ({aircraft_registration})"
     draw.text((20, aircraft_y), "AIRCRAFT", fill=label_color, font=footer_label_font)

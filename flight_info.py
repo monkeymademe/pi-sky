@@ -16,6 +16,45 @@ from math import radians, cos, sin, asin, sqrt
 OPENFLIGHTS_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
 OPENFLIGHTS_AIRPORTS_CACHE = "airports_cache.dat"
 
+# In adsb.lol / ADSBExchange-style v2 responses, ac["type"] is the *message source*
+# (e.g. adsb_icao, mlat), not the aircraft type. ICAO type designator is ac["t"].
+_ADSB_MSG_SOURCE_TYPES = frozenset({
+    'adsb_icao', 'adsb_icao_nt', 'adsb_other', 'adsr_icao', 'adsr_other',
+    'tisb_icao', 'tisb_trackid', 'mlat', 'mode_s', 'unknown',
+})
+
+
+def sanitize_aircraft_label_for_display(value):
+    """
+    Return the string for UI display, or None if the value is an ADS-B *track/mode*
+    label (e.g. adsb_icao), not aircraft type/model text.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    low = s.lower()
+    if low in _ADSB_MSG_SOURCE_TYPES:
+        return None
+    if low.startswith(('adsb_', 'adsr_', 'tisb_')):
+        return None
+    return s
+
+
+def sanitize_aircraft_info_dict(info):
+    """Drop model/type fields that are really message-source tokens; may return None if empty."""
+    if not info:
+        return None
+    out = {}
+    for k, v in info.items():
+        if k in ('model', 'type'):
+            if sanitize_aircraft_label_for_display(v) is None:
+                continue
+        out[k] = v
+    return out if out else None
+
+
 # No static airport mapping - we use OpenFlights database for airport info
 
 def load_openflights_airports():
@@ -443,10 +482,8 @@ def get_aircraft_info_adsblol(icao):
                 ac = ac_list[0]
                 result = {}
                 
-                # Try to get aircraft type/model information
-                # adsb.lol might have 'type', 't', 'desc', or similar fields
-                if 'type' in ac:
-                    result['type'] = ac.get('type')
+                # Aircraft type code / description: use ICAO type 't' and 'desc', not ac['type']
+                # (ac['type'] is track/source e.g. adsb_icao — see _ADSB_MSG_SOURCE_TYPES).
                 if 't' in ac:
                     result['type'] = ac.get('t')
                 if 'desc' in ac:
@@ -467,7 +504,8 @@ def get_aircraft_info_adsblol(icao):
                         result['registration'] = db.get('r')
                     if 'manufacturer' in db:
                         result['manufacturer'] = db.get('manufacturer')
-                
+
+                result = sanitize_aircraft_info_dict(result)
                 if result:
                     print(f"[{timestamp}] API SUCCESS: Aircraft info found for {icao}: {result}")
                     return result

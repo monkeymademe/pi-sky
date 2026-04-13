@@ -744,6 +744,18 @@
             if (lat === null || lat === undefined || lon === null || lon === undefined) return 'N/A';
             return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
         }
+
+        /** Hide ADS-B API track/mode tokens (e.g. adsb_icao) that are not aircraft type/model text. */
+        function sanitizeAircraftLabel(value) {
+            if (value == null || value === '') return '';
+            const s = String(value).trim();
+            const low = s.toLowerCase();
+            if (!low) return '';
+            const bad = new Set(['adsb_icao', 'adsb_icao_nt', 'adsb_other', 'adsr_icao', 'adsr_other', 'tisb_icao', 'tisb_trackid', 'mlat', 'mode_s', 'unknown']);
+            if (bad.has(low)) return '';
+            if (/^(adsb_|adsr_|tisb_)/.test(low)) return '';
+            return s;
+        }
         
         function getCountryFlag(country) {
             // Map country names to flag emojis
@@ -822,6 +834,16 @@
             const card = document.createElement('div');
             card.className = `flight-card ${flight.status}`;
             card.dataset.icao = flight.icao;
+
+            const acModel = sanitizeAircraftLabel(flight.aircraft_model);
+            const acType = sanitizeAircraftLabel(flight.aircraft_type);
+            const acKind = acModel || acType;
+            const hasAircraftKind = !!acKind;
+            const hasAircraftFooter = hasAircraftKind || !!flight.aircraft_registration;
+            const hasCallsign = !!(flight.callsign && flight.callsign !== 'Unidentified');
+            const noRouteSubtext = hasCallsign
+                ? 'No route found'
+                : 'No route found • No callsign';
             
             // Build airline logo HTML if available
             const airlineLogoHtml = flight.airline_logo 
@@ -864,13 +886,13 @@
                 ${!hasRoute ? `
                 <div class="flight-card-route" style="padding: 24px 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
                     <div style="color: var(--text-muted); font-size: 0.85em; line-height: 1.4;">
-                        ${flight.aircraft_model || flight.aircraft_type ? `
+                        ${hasAircraftKind ? `
                             <div style="font-size: 1.5em; font-weight: bold; color: var(--route-color); margin-bottom: 4px;">
-                                ${flight.aircraft_model || flight.aircraft_type}
+                                ${acKind}
                                 ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
                             </div>
                         ` : ''}
-                        <div style="font-style: italic; color: var(--text-secondary);">No route • No callsign</div>
+                        <div style="font-style: italic; color: var(--text-secondary);">${noRouteSubtext}</div>
                     </div>
                 </div>
                 ` : `
@@ -932,12 +954,12 @@
                         <div class="flight-detail-value" style="font-family: monospace; font-size: 14px;">${formatCoordinates(flight.lat, flight.lon)}</div>
                     </div>
                     ` : ''}
-                    ${flight.aircraft_model || flight.aircraft_type || flight.aircraft_registration ? `
+                    ${hasAircraftFooter ? `
                     <div class="flight-detail-item" style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
                         <div style="flex: 1;">
                             <div class="flight-detail-label">Aircraft</div>
                             <div class="flight-detail-value">
-                                ${flight.aircraft_model || flight.aircraft_type || 'Unknown'}
+                                ${acKind || 'Unknown'}
                                 ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
                             </div>
                         </div>
