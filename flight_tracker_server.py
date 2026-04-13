@@ -17,6 +17,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import TCPServer, ThreadingMixIn
 from math import radians, sin, cos, sqrt, atan2
 import subprocess
+from urllib.parse import urlparse
 
 # Suppress urllib3 warning
 os.environ['PYTHONWARNINGS'] = 'ignore:urllib3'
@@ -132,6 +133,8 @@ def validate_config(config):
         return 'http_port must be an integer'
     if not isinstance(config.get('websocket_port'), int):
         return 'websocket_port must be an integer'
+    if 'enable_config_page' in config and not isinstance(config.get('enable_config_page'), bool):
+        return 'enable_config_page must be a boolean'
     
     # Validate ranges
     if not (-90 <= config.get('receiver_lat', 0) <= 90):
@@ -188,6 +191,8 @@ def load_config():
                 config['inky'] = {}
             if 'enabled' not in config['inky']:
                 config['inky']['enabled'] = False
+            if 'enable_config_page' not in config:
+                config['enable_config_page'] = True
             # Legacy: map_generation.enabled was merged into inky.enabled
             if isinstance(config.get('map_generation'), dict):
                 config['map_generation'].pop('enabled', None)
@@ -1336,22 +1341,23 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         # Parse path and query string (for routes that need exact match)
-        path_parts = self.path.split('?', 1)
-        path = path_parts[0]
-        
-        if self.path == '/events':
+        parsed_path = urlparse(self.path).path or '/'
+        path = parsed_path.rstrip('/') or '/'
+        path_lc = path.lower()
+
+        if parsed_path == '/events':
             self.handle_sse()
         elif path == '/api/config':
             self.handle_config_get()
         elif path == '/api/replay/stats':
             self.handle_replay_stats()
-        elif self.path.startswith('/api/replay/stream'):
+        elif parsed_path.startswith('/api/replay/stream'):
             self.handle_replay_stream()
-        elif self.path.startswith('/api/replay'):
+        elif parsed_path.startswith('/api/replay'):
             self.handle_replay_api()
-        elif self.path.startswith('/api/flights'):
+        elif parsed_path.startswith('/api/flights'):
             self.handle_flights_api()
-        elif self.path.startswith('/api/aircraft'):
+        elif parsed_path.startswith('/api/aircraft'):
             self.handle_aircraft_api()
         else:
             super().do_GET()

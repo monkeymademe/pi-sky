@@ -1,11 +1,9 @@
 {
-    "dump1090_url": "http://localhost:8080/data/aircraft.json",
-    "receiver_lat": 52.40585,
-    "receiver_lon": 13.55214,
-    "nearest_airport": "EDDB",
-    "hide_receiver": false,
+    "dump1090_url": "http://192.168.1.42/skyaware/data/aircraft.json",
+    "receiver_lat": 52.405925,
+    "receiver_lon": 13.552052,
+    "hide_receiver": true,
     "show_test_flight": false,
-    "enable_config_page": true,
     "http_host": "0.0.0.0",
     "http_port": 5050,
     "websocket_host": "0.0.0.0",
@@ -20,6 +18,7 @@
         "min_altitude": 10000,
         "max_distance_km": 500
     },
+    "nearest_airport": "EDDB",
     "clear_skies": {
         "enabled": true
     },

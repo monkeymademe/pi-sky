@@ -1958,9 +1958,25 @@
             updateThemeToggle(savedTheme);
         }
 
+        async function applyConfigPageVisibility() {
+            try {
+                const response = await fetch('/api/config?' + Date.now(), { cache: 'no-cache' });
+                if (!response.ok) return;
+                const config = await response.json();
+                if (config.enable_config_page === false) {
+                    document.querySelectorAll('a[href="config.html"]').forEach((link) => {
+                        link.style.display = 'none';
+                    });
+                }
+            } catch (e) {
+                // Keep nav unchanged if config is unavailable
+            }
+        }
+
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
+            applyConfigPageVisibility();
         });
 
         window.addEventListener('resize', () => {

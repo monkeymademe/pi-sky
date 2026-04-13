@@ -262,6 +262,17 @@
             transition: background 0.3s ease;
         }
 
+        .config-disabled-warning {
+            display: none;
+            background: rgba(61, 80, 102, 0.15);
+            border: 1px solid var(--palette-3);
+            border-radius: 10px;
+            padding: 16px 18px;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
         .config-intro {
             color: var(--text-secondary);
             margin-bottom: 20px;
@@ -633,7 +644,11 @@
             </div>
         </div>
 
-        <div class="config-main">
+        <div id="configDisabledWarning" class="config-disabled-warning" role="alert">
+            This config page is disabled. To re-enable it, edit <code>config.json</code> directly and set <code>enable_config_page</code> to <code>true</code>.
+        </div>
+
+        <div class="config-main" id="configMain">
             <p class="config-intro">Manage your Pi-Sky receiver and server settings.</p>
             <div id="configFeedback" class="config-feedback"></div>
 
@@ -731,6 +746,19 @@
                                 <input type="number" id="websocket_port" name="websocket_port" min="1" max="65535" required>
                                 <span class="help-text">WebSocket server port (1-65535)</span>
                             </div>
+                        </div>
+                        <div class="horizontal-rule"></div>
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="enable_config_page">Enable config page</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="enable_config_page" name="enable_config_page">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <span class="help-text">Warning: disabling this hides and blocks config.html. The only way to restore access is editing config.json directly and setting enable_config_page to true.</span>
                         </div>
                     </div>
                 </div>
@@ -1058,6 +1086,14 @@
                 console.log('[loadConfig] dump1090_url:', config.dump1090_url);
                 console.log('[loadConfig] receiver_lat:', config.receiver_lat);
                 console.log('[loadConfig] About to populate form fields...');
+
+                if (config.enable_config_page === false) {
+                    const warningEl = document.getElementById('configDisabledWarning');
+                    const mainEl = document.getElementById('configMain');
+                    if (warningEl) warningEl.style.display = 'block';
+                    if (mainEl) mainEl.style.display = 'none';
+                    return;
+                }
                 
                 // CRITICAL: Verify we can access the DOM
                 const testEl = document.getElementById('dump1090_url');
@@ -1071,6 +1107,7 @@
                 const requiredIds = [
                     'dump1090_url', 'receiver_lat', 'receiver_lon', 'hide_receiver', 'show_test_flight',
                     'http_host', 'http_port', 'websocket_host', 'websocket_port',
+                    'enable_config_page',
                     'inky_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
@@ -1131,6 +1168,7 @@
                 setValue('http_port', config.http_port || 8080);
                 setValue('websocket_host', config.websocket_host || '0.0.0.0');
                 setValue('websocket_port', config.websocket_port || 8765);
+                setChecked('enable_config_page', config.enable_config_page !== false);
 
                 const ink = config.inky || {};
                 setChecked('inky_enabled', ink.enabled === true);
@@ -1201,6 +1239,18 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = 'Saving... <span class="loading"></span>';
 
+            const enableConfigToggle = document.getElementById('enable_config_page');
+            if (enableConfigToggle && !enableConfigToggle.checked) {
+                const confirmed = window.confirm(
+                    'Disable config page now?\n\nThis will block config.html. The only way to restore it is editing config.json directly and setting enable_config_page to true.'
+                );
+                if (!confirmed) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                    return;
+                }
+            }
+
             console.log('[SAVE] Building config object...');
             // Build config object
             const config = {
@@ -1209,6 +1259,7 @@
                 receiver_lon: parseFloat(document.getElementById('receiver_lon').value),
                 hide_receiver: document.getElementById('hide_receiver').checked,
                 show_test_flight: document.getElementById('show_test_flight').checked,
+                enable_config_page: document.getElementById('enable_config_page').checked,
                 http_host: document.getElementById('http_host').value,
                 http_port: parseInt(document.getElementById('http_port').value),
                 websocket_host: document.getElementById('websocket_host').value,
@@ -1272,6 +1323,9 @@
                 if (response.ok) {
                     console.log('[SAVE] Success!');
                     showStatus('Configuration saved successfully! ' + (result.note || ''), 'success');
+                    if (!config.enable_config_page) {
+                        showStatus('Config page disabled. To re-enable it, edit config.json and set enable_config_page to true.', 'info');
+                    }
                 } else {
                     console.error('[SAVE] Error response:', result);
                     showStatus('Error: ' + (result.error || 'Unknown error'), 'error');
@@ -1320,6 +1374,15 @@
         
         // Start initialization
         initConfig();
+
+        const enableConfigToggle = document.getElementById('enable_config_page');
+        if (enableConfigToggle) {
+            enableConfigToggle.addEventListener('change', () => {
+                if (!enableConfigToggle.checked) {
+                    showStatus('Warning: once saved, config.html will be disabled. To restore access, edit config.json directly.', 'info');
+                }
+            });
+        }
     </script>
 </body>
 </html>
