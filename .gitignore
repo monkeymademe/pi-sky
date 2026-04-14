@@ -56,3 +56,6 @@ flights.db
 # Generated Inky display output (runtime)
 inky_ready.png
 
+# Mictronics local upload/import artifacts (runtime, not source)
+data/mictronics/
+
