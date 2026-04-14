@@ -4,6 +4,7 @@ Flight Database Module
 SQLite database for storing flight data snapshots for replay functionality
 """
 
+import os
 import sqlite3
 import json
 import threading
@@ -572,6 +573,10 @@ class FlightDatabase:
             cursor.execute('ALTER TABLE flights ADD COLUMN is_round_trip INTEGER DEFAULT 0')
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE aircraft ADD COLUMN is_helicopter INTEGER')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_aircraft ON flights(aircraft_icao)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_callsign ON flights(callsign)')
@@ -604,7 +609,7 @@ class FlightDatabase:
         
         Args:
             icao: ICAO24 hex code
-            aircraft_info: dict with registration, type, model, manufacturer
+            aircraft_info: dict with registration, type, model, manufacturer, is_helicopter (0 or 1)
         """
         with self.lock:
             conn = sqlite3.connect(self.db_path)
@@ -620,23 +625,119 @@ class FlightDatabase:
             
             # Update additional fields if provided
             if aircraft_info:
-                cursor.execute('''
-                    UPDATE aircraft 
-                    SET registration = COALESCE(?, registration),
-                        type = COALESCE(?, type),
-                        model = COALESCE(?, model),
-                        manufacturer = COALESCE(?, manufacturer)
-                    WHERE icao = ?
-                ''', (
+                from flight_info import sanitize_aircraft_label_for_display
+
+                def _clean_stored_tm(v):
+                    if v is None:
+                        return None
+                    return sanitize_aircraft_label_for_display(v)
+
+                sets = [
+                    'registration = COALESCE(?, registration)',
+                    'type = COALESCE(?, type)',
+                    'model = COALESCE(?, model)',
+                    'manufacturer = COALESCE(?, manufacturer)',
+                ]
+                params = [
                     aircraft_info.get('registration'),
-                    aircraft_info.get('type'),
-                    aircraft_info.get('model'),
+                    _clean_stored_tm(aircraft_info.get('type')),
+                    _clean_stored_tm(aircraft_info.get('model')),
                     aircraft_info.get('manufacturer'),
-                    icao
-                ))
+                ]
+                if 'is_helicopter' in aircraft_info and aircraft_info.get('is_helicopter') is not None:
+                    sets.append('is_helicopter = ?')
+                    params.append(int(aircraft_info['is_helicopter']))
+                params.append(icao)
+                cursor.execute(
+                    f'UPDATE aircraft SET {", ".join(sets)} WHERE icao = ?',
+                    params,
+                )
             
             conn.commit()
             conn.close()
+
+    def backfill_aircraft_is_helicopter(self):
+        """
+        Recompute aircraft.is_helicopter for every row from stored type and model.
+        Emitter category is not persisted on aircraft, so classification matches
+        live enrichment when category is unknown (ICAO type + model text only).
+        """
+        from flight_info import infer_is_helicopter
+
+        stats = {'rows': 0, 'set_true': 0, 'set_false': 0, 'set_null': 0}
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT icao, type, model FROM aircraft')
+            rows = cursor.fetchall()
+            for icao, typ, mod in rows:
+                ih = infer_is_helicopter(None, typ, mod)
+                if ih is True:
+                    val = 1
+                    stats['set_true'] += 1
+                elif ih is False:
+                    val = 0
+                    stats['set_false'] += 1
+                else:
+                    val = None
+                    stats['set_null'] += 1
+                cursor.execute(
+                    'UPDATE aircraft SET is_helicopter = ? WHERE icao = ?',
+                    (val, icao),
+                )
+                stats['rows'] += 1
+            conn.commit()
+            conn.close()
+        return stats
+
+    def repair_aircraft_from_mictronics_lookup(self, lookup_path=None):
+        """
+        Overwrite junk or empty aircraft.type / aircraft.model from Mictronics lookup.json
+        when a matching ICAO exists. Fixes rows where e.g. adsb_icao was stored as type.
+        """
+        import json
+        from flight_info import sanitize_aircraft_label_for_display
+
+        path = lookup_path or os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'mictronics', 'lookup.json')
+        )
+        if not os.path.isfile(path):
+            return {'error': f'lookup not found: {path}', 'updated': 0}
+
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        records = data.get('records', data) if isinstance(data, dict) else {}
+        if not isinstance(records, dict):
+            return {'error': 'invalid lookup records', 'updated': 0}
+
+        updated = 0
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT icao, type, model FROM aircraft')
+            for icao, typ, mod in cursor.fetchall():
+                rec = records.get(str(icao).strip().lower())
+                if not isinstance(rec, dict):
+                    rec = {}
+                junk_type = typ and sanitize_aircraft_label_for_display(typ) is None
+                new_t = typ
+                new_m = mod
+                if junk_type or not typ:
+                    if rec.get('type'):
+                        new_t = str(rec['type']).strip()
+                    elif junk_type:
+                        new_t = None
+                if (not mod or not str(mod).strip()) and rec.get('model'):
+                    new_m = str(rec['model']).strip()
+                if new_t != typ or new_m != mod:
+                    cursor.execute(
+                        'UPDATE aircraft SET type = ?, model = ? WHERE icao = ?',
+                        (new_t, new_m, icao),
+                    )
+                    updated += 1
+            conn.commit()
+            conn.close()
+        return {'updated': updated, 'lookup_path': path}
 
     def get_peer_estimated_model(self, type_code, exclude_icao=None, min_peers=2):
         """
@@ -989,7 +1090,7 @@ class FlightDatabase:
             cursor = conn.cursor()
             
             query = '''
-                SELECT f.*, a.registration, a.type, a.model, a.manufacturer,
+                SELECT f.*, a.registration, a.type, a.model, a.manufacturer, a.is_helicopter,
                        (SELECT MAX(p.ts) FROM positions p WHERE p.flight_id = f.id) AS last_position_ts
                 FROM flights f
                 LEFT JOIN aircraft a ON f.aircraft_icao = a.icao
@@ -1075,7 +1176,7 @@ class FlightDatabase:
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT f.*, a.registration, a.type, a.model, a.manufacturer,
+                SELECT f.*, a.registration, a.type, a.model, a.manufacturer, a.is_helicopter,
                        (SELECT MAX(p.ts) FROM positions p WHERE p.flight_id = f.id) AS last_position_ts
                 FROM flights f
                 LEFT JOIN aircraft a ON f.aircraft_icao = a.icao

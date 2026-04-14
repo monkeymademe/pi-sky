@@ -33,9 +33,11 @@ import subprocess
 from flight_info import (
     get_flight_route,
     get_aircraft_info_adsblol,
+    get_aircraft_info_mictronics,
     get_aircraft_photos_jetapi,
     get_airport_coordinates,
     get_city_name_from_coordinates,
+    infer_is_helicopter,
     sanitize_aircraft_label_for_display,
 )
 from airline_logos import get_airline_info
@@ -1029,6 +1031,7 @@ def process_aircraft_data(aircraft_data):
                 'aircraft_model': None,
                 'aircraft_type': None,
                 'aircraft_registration': None,
+                'is_helicopter': None,
                 'last_distance': distance,  # Store initial distance for adaptive timeout
                 'position_history': []  # Store recent positions for round-trip route analysis
             }
@@ -1249,6 +1252,14 @@ def process_aircraft_data(aircraft_data):
                 flight_memory[icao].get('aircraft_type')
             ) is None:
                 flight_memory[icao]['aircraft_type'] = None
+            # Replace missing type/model from local Mictronics lookup (e.g. after stripping adsb_icao junk)
+            if icao != 'Unknown':
+                mic = get_aircraft_info_mictronics(icao)
+                if mic:
+                    if not flight_memory[icao].get('aircraft_type') and mic.get('type'):
+                        flight_memory[icao]['aircraft_type'] = mic['type']
+                    if not flight_memory[icao].get('aircraft_model') and mic.get('model'):
+                        flight_memory[icao]['aircraft_model'] = mic['model']
             enriched['aircraft_model'] = flight_memory[icao].get('aircraft_model')
             enriched['aircraft_type'] = flight_memory[icao].get('aircraft_type')
             enriched['aircraft_registration'] = flight_memory[icao].get('aircraft_registration')
@@ -1278,21 +1289,32 @@ def process_aircraft_data(aircraft_data):
                 enriched['airline_logo'] = airline_info.get('logo_url')
                 enriched['airline_name'] = airline_info.get('name')
         
+        # Peer model estimate (before helicopter classification)
+        if flight_db and icao != 'Unknown':
+            _am = enriched.get('aircraft_model')
+            _at = enriched.get('aircraft_type')
+            if (not _am or not str(_am).strip()) and _at and str(_at).strip():
+                _peer_model = flight_db.get_peer_estimated_model(_at, exclude_icao=icao)
+                if _peer_model:
+                    enriched['aircraft_model'] = _peer_model
+                    if icao in flight_memory:
+                        flight_memory[icao]['aircraft_model'] = _peer_model
+
+        ih = None
+        if icao != 'Unknown':
+            ih = infer_is_helicopter(
+                enriched.get('category'),
+                enriched.get('aircraft_type'),
+                enriched.get('aircraft_model'),
+            )
+            enriched['is_helicopter'] = ih
+            if icao in flight_memory:
+                flight_memory[icao]['is_helicopter'] = ih
+
         # Track flight in new schema (aircraft + flights + positions)
         # This happens AFTER enriched data is fully populated
         if flight_db:
             try:
-                # If type is known but model is still missing after API/Mictronics, estimate
-                # from the most common model among other aircraft rows with the same type.
-                if icao != 'Unknown':
-                    _am = enriched.get('aircraft_model')
-                    _at = enriched.get('aircraft_type')
-                    if (not _am or not str(_am).strip()) and _at and str(_at).strip():
-                        _peer_model = flight_db.get_peer_estimated_model(_at, exclude_icao=icao)
-                        if _peer_model:
-                            enriched['aircraft_model'] = _peer_model
-                            if icao in flight_memory:
-                                flight_memory[icao]['aircraft_model'] = _peer_model
                 # Update aircraft record with info from flight_memory
                 aircraft_info = {
                     'registration': enriched.get('aircraft_registration'),
@@ -1300,6 +1322,10 @@ def process_aircraft_data(aircraft_data):
                     'model': enriched.get('aircraft_model'),
                     'manufacturer': None  # Add if available
                 }
+                if ih is True:
+                    aircraft_info['is_helicopter'] = 1
+                elif ih is False:
+                    aircraft_info['is_helicopter'] = 0
                 flight_db.upsert_aircraft(icao, aircraft_info)
                 
                 # Get or create active flight
@@ -1490,6 +1516,7 @@ def process_aircraft_data(aircraft_data):
             'aircraft_model': flight_memory[dummy_icao].get('aircraft_model'),
             'aircraft_type': flight_memory[dummy_icao].get('aircraft_type'),
             'aircraft_registration': flight_memory[dummy_icao].get('aircraft_registration'),
+            'is_helicopter': False,
             'lookup_error': None,
             'airline_code': flight_memory[dummy_icao].get('airline_code'),
             'airline_logo': flight_memory[dummy_icao].get('airline_logo'),
@@ -2517,7 +2544,11 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'registration': flight.get('registration'),
                         'type': flight.get('type'),
                         'model': flight.get('model'),
-                        'manufacturer': flight.get('manufacturer')
+                        'manufacturer': flight.get('manufacturer'),
+                        'is_helicopter': (
+                            None if flight.get('is_helicopter') is None
+                            else bool(flight.get('is_helicopter'))
+                        ),
                     },
                     'origin': flight.get('origin'),
                     'destination': flight.get('destination'),
@@ -2618,7 +2649,11 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                             'registration': flight.get('registration'),
                             'type': flight.get('type'),
                             'model': flight.get('model'),
-                            'manufacturer': flight.get('manufacturer')
+                            'manufacturer': flight.get('manufacturer'),
+                            'is_helicopter': (
+                                None if flight.get('is_helicopter') is None
+                                else bool(flight.get('is_helicopter'))
+                            ),
                         },
                         'origin': flight.get('origin'),
                         'destination': flight.get('destination'),
@@ -2747,7 +2782,11 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                             'model': aircraft.get('model'),
                             'manufacturer': aircraft.get('manufacturer'),
                             'first_seen_at': aircraft.get('first_seen_at'),
-                            'last_seen_at': aircraft.get('last_seen_at')
+                            'last_seen_at': aircraft.get('last_seen_at'),
+                            'is_helicopter': (
+                                None if aircraft.get('is_helicopter') is None
+                                else bool(aircraft.get('is_helicopter'))
+                            ),
                         },
                         'flights': flight_list,
                         'count': len(flight_list)
@@ -2785,7 +2824,11 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'model': aircraft.get('model'),
                         'manufacturer': aircraft.get('manufacturer'),
                         'first_seen_at': aircraft.get('first_seen_at'),
-                        'last_seen_at': aircraft.get('last_seen_at')
+                        'last_seen_at': aircraft.get('last_seen_at'),
+                        'is_helicopter': (
+                            None if aircraft.get('is_helicopter') is None
+                            else bool(aircraft.get('is_helicopter'))
+                        ),
                     }
                     
                     # Add photos and additional details if available
@@ -2813,6 +2856,9 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     limit = int(limit)
                 
                 aircraft_list = flight_db.list_aircraft(limit=limit)
+                for _a in aircraft_list:
+                    if _a.get('is_helicopter') is not None:
+                        _a['is_helicopter'] = bool(_a['is_helicopter'])
                 
                 # Format aircraft for response
                 response = {

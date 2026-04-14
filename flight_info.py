@@ -9,6 +9,7 @@ import requests
 import sys
 import os
 import json
+import re
 import time
 from datetime import datetime
 from math import radians, cos, sin, asin, sqrt
@@ -29,6 +30,54 @@ _mictronics_lookup_cache = {
     'mtime': None,
     'records': {},
 }
+
+# ICAO Doc 8643 — common rotorcraft designators (uppercase); extend as needed.
+_HELICOPTER_ICAO_TYPE_CODES = frozenset({
+    'A109', 'A119', 'A139', 'A149', 'A189', 'AS3B', 'AS32', 'AS50', 'AS55', 'AS65',
+    'B105', 'B212', 'B214', 'B230', 'B407', 'B412', 'B427', 'B429', 'B430', 'BK17',
+    'EC20', 'EC25', 'EC30', 'EC35', 'EC45', 'EC55', 'EC75', 'EN48',
+    'H125', 'H130', 'H135', 'H145', 'H155', 'H160', 'H175', 'H215', 'H225',
+    'H500', 'H53S', 'H60', 'H64', 'KMAX', 'MD52', 'MD60', 'MD90', 'MD95',
+    'MH60', 'MH65', 'NH90', 'R22', 'R44', 'R66', 'S61', 'S64', 'S70', 'S76', 'S92',
+    'UH60', 'UH1', 'V500', 'AW09', 'AW119', 'AW139', 'AW159', 'AW169', 'AW189',
+})
+
+
+def infer_is_helicopter(category=None, type_code=None, model=None):
+    """
+    Return True if the aircraft is a helicopter/rotorcraft, False if confident it is not,
+    None if unknown (insufficient or ambiguous data).
+
+    Uses ADS-B emitter category when present (standard A0–A7 encoding: A7 = rotorcraft),
+    then ICAO aircraft type designator, then model string heuristics.
+    """
+    # 1) ADS-B category (readsb/dump1090-style "A0".."A7")
+    if category is not None:
+        s = str(category).strip().upper()
+        m = re.match(r'^A([0-7])$', s)
+        if m:
+            d = int(m.group(1))
+            if d == 7:
+                return True
+            if 1 <= d <= 6:
+                return False
+            # A0 = no category information — continue with other signals
+
+    t = sanitize_aircraft_label_for_display(type_code) if type_code else None
+    if t:
+        tu = str(t).strip().upper()
+        if tu in _HELICOPTER_ICAO_TYPE_CODES:
+            return True
+
+    if model:
+        ml = str(model).lower()
+        if 'helicopter' in ml or 'rotorcraft' in ml:
+            return True
+
+    if t or (model and str(model).strip()):
+        return False
+
+    return None
 
 
 def sanitize_aircraft_label_for_display(value):
