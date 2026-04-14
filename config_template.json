@@ -28,5 +28,10 @@
         "db_path": "flights.db",
         "snapshot_interval_seconds": 5,
         "cleanup_days": 7
+    },
+    "mictronics_aircraft_db": {
+        "enabled": false,
+        "filename": null,
+        "last_uploaded_at": null
     }
 }

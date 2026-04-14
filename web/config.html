@@ -357,6 +357,35 @@
             color: var(--text-primary);
         }
 
+        input[type="file"] {
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.95em;
+            background: var(--card-bg);
+            color: var(--text-primary);
+        }
+
+        input[type="file"]::file-selector-button {
+            margin-right: 10px;
+            padding: 8px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--selected-bg);
+            color: var(--text-primary);
+            font-weight: 500;
+            cursor: pointer;
+            transition: filter 0.2s ease;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            filter: brightness(0.95);
+        }
+
+        [data-theme="dark"] input[type="file"]::file-selector-button:hover {
+            filter: brightness(1.1);
+        }
+
         input[type="text"]:focus,
         input[type="number"]:focus,
         input[type="url"]:focus {
@@ -862,6 +891,42 @@
                     </div>
                 </div>
 
+                <!-- Mictronics Aircraft Reference -->
+                <div class="section">
+                    <div class="section-header" onclick="toggleSection(this)">
+                        Mictronics Aircraft Reference
+                    </div>
+                    <div class="section-content">
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="mictronics_enabled">Enable Mictronics reference file</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="mictronics_enabled" name="mictronics_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <span class="help-text">Recommended file: the <strong>dump1090-fa / mutability JSON export</strong> from Mictronics. Upload that file to use as a local metadata reference.</span>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="mictronics_file">Upload Mictronics file</label>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <input type="file" id="mictronics_file" name="mictronics_file" accept=".csv,.txt,.json,.gz,.zip,.db,.sqlite,.xml,.tar,.tgz,.bz2,.xz,*/*">
+                                <button type="button" class="btn-secondary" id="mictronicsUploadBtn" onclick="uploadMictronicsFile()">Upload file</button>
+                            </div>
+                            <span class="help-text">
+                                Last uploaded: <strong id="mictronics_last_uploaded">Never</strong>
+                                <span id="mictronics_uploaded_filename"></span>
+                            </span>
+                            <span class="help-text">
+                                This file may become outdated over time. Check for newer exports at
+                                <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">Mictronics aircraft database downloads</a>.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Credits -->
                 <div class="section credits-section">
                     <div class="section-header" onclick="toggleSection(this)">
@@ -876,6 +941,11 @@
                                 <strong>FlipOff</strong>
                                 <span class="credit-desc">Split-flap display UI on the flight list (card view).</span>
                                 <a href="https://github.com/magnum6actual/flipoff" target="_blank" rel="noopener noreferrer">https://github.com/magnum6actual/flipoff</a>
+                            </li>
+                            <li>
+                                <strong>Mictronics Aircraft Database</strong>
+                                <span class="credit-desc">Aircraft registration/type/model reference data used for optional local enrichment imports.</span>
+                                <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">https://www.mictronics.de/aircraft-database/#</a>
                             </li>
                         </ul>
                     </div>
@@ -1023,6 +1093,67 @@
             }, 5000);
         }
 
+        function formatIsoTimestamp(ts) {
+            if (!ts) return 'Never';
+            const dt = new Date(ts);
+            if (Number.isNaN(dt.getTime())) return ts;
+            return dt.toLocaleString();
+        }
+
+        function updateMictronicsMetaDisplay(mdb) {
+            const lastEl = document.getElementById('mictronics_last_uploaded');
+            const nameEl = document.getElementById('mictronics_uploaded_filename');
+            if (lastEl) lastEl.textContent = formatIsoTimestamp(mdb?.last_uploaded_at);
+            if (nameEl) {
+                nameEl.textContent = mdb?.filename ? ` (${mdb.filename})` : '';
+            }
+        }
+
+        async function uploadMictronicsFile() {
+            const fileEl = document.getElementById('mictronics_file');
+            const btn = document.getElementById('mictronicsUploadBtn');
+            if (!fileEl || !fileEl.files || !fileEl.files[0]) {
+                showStatus('Please choose a Mictronics file to upload first.', 'error');
+                return;
+            }
+
+            const file = fileEl.files[0];
+            const formData = new FormData();
+            formData.append('file', file, file.name);
+
+            const originalText = btn ? btn.textContent : 'Upload file';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Uploading...';
+            }
+
+            try {
+                const response = await fetch('/api/mictronics/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Upload failed');
+                }
+                updateMictronicsMetaDisplay({
+                    filename: result.filename,
+                    last_uploaded_at: result.last_uploaded_at
+                });
+                const micToggle = document.getElementById('mictronics_enabled');
+                if (micToggle) micToggle.checked = true;
+                fileEl.value = '';
+                showStatus(`Mictronics file uploaded (${result.bytes} bytes).`, 'success');
+            } catch (error) {
+                showStatus(`Upload failed: ${error.message}`, 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
+            }
+        }
+
         async function loadConfig(retryCount = 0) {
             const maxRetries = 3;
             console.log(`[loadConfig] Starting (attempt ${retryCount + 1}/${maxRetries + 1})`);
@@ -1111,7 +1242,8 @@
                     'inky_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
-                    'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days'
+                    'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days',
+                    'mictronics_enabled', 'mictronics_last_uploaded'
                 ];
                 
                 const missingElements = requiredIds.filter(id => !document.getElementById(id));
@@ -1193,6 +1325,11 @@
                 setValue('db_path', db.db_path || 'flights.db');
                 setValue('db_snapshot_interval', db.snapshot_interval_seconds || 5);
                 setValue('db_cleanup_days', db.cleanup_days || 7);
+
+                // Mictronics reference file
+                const mdb = config.mictronics_aircraft_db || {};
+                setChecked('mictronics_enabled', mdb.enabled === true);
+                updateMictronicsMetaDisplay(mdb);
 
                 console.log('[loadConfig] All fields populated');
                 
@@ -1283,8 +1420,25 @@
                     db_path: document.getElementById('db_path').value,
                     snapshot_interval_seconds: parseInt(document.getElementById('db_snapshot_interval').value) || 5,
                     cleanup_days: parseInt(document.getElementById('db_cleanup_days').value) || 7
+                },
+                mictronics_aircraft_db: {
+                    enabled: document.getElementById('mictronics_enabled').checked,
+                    filename: null,
+                    last_uploaded_at: null
                 }
             };
+
+            try {
+                const currentResponse = await fetch('/api/config?' + Date.now(), { cache: 'no-cache' });
+                if (currentResponse.ok) {
+                    const currentConfig = await currentResponse.json();
+                    const currentMdb = currentConfig.mictronics_aircraft_db || {};
+                    config.mictronics_aircraft_db.filename = currentMdb.filename || null;
+                    config.mictronics_aircraft_db.last_uploaded_at = currentMdb.last_uploaded_at || null;
+                }
+            } catch (e) {
+                console.warn('[SAVE] Could not preserve Mictronics file metadata from current config:', e);
+            }
 
             try {
                 console.log('[SAVE] Sending POST request...');

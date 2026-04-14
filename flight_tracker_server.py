@@ -12,6 +12,7 @@ import time
 import asyncio
 import threading
 import warnings
+import cgi
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import TCPServer, ThreadingMixIn
@@ -177,6 +178,17 @@ def validate_config(config):
         ink = config['inky']
         if 'enabled' in ink and not isinstance(ink['enabled'], bool):
             return 'inky.enabled must be a boolean'
+
+    if 'mictronics_aircraft_db' in config:
+        mdb = config['mictronics_aircraft_db']
+        if not isinstance(mdb, dict):
+            return 'mictronics_aircraft_db must be an object'
+        if 'enabled' in mdb and not isinstance(mdb['enabled'], bool):
+            return 'mictronics_aircraft_db.enabled must be a boolean'
+        if 'filename' in mdb and mdb['filename'] is not None and not isinstance(mdb['filename'], str):
+            return 'mictronics_aircraft_db.filename must be a string or null'
+        if 'last_uploaded_at' in mdb and mdb['last_uploaded_at'] is not None and not isinstance(mdb['last_uploaded_at'], str):
+            return 'mictronics_aircraft_db.last_uploaded_at must be a string or null'
     
     return None  # Valid
 
@@ -200,6 +212,14 @@ def load_config():
                 config['inky']['enabled'] = False
             if 'enable_config_page' not in config:
                 config['enable_config_page'] = True
+            if 'mictronics_aircraft_db' not in config or not isinstance(config.get('mictronics_aircraft_db'), dict):
+                config['mictronics_aircraft_db'] = {}
+            if 'enabled' not in config['mictronics_aircraft_db']:
+                config['mictronics_aircraft_db']['enabled'] = False
+            if 'filename' not in config['mictronics_aircraft_db']:
+                config['mictronics_aircraft_db']['filename'] = None
+            if 'last_uploaded_at' not in config['mictronics_aircraft_db']:
+                config['mictronics_aircraft_db']['last_uploaded_at'] = None
             # Legacy: map_generation.enabled was merged into inky.enabled
             if isinstance(config.get('map_generation'), dict):
                 config['map_generation'].pop('enabled', None)
@@ -1385,6 +1405,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
         
         if path == '/api/config':
             self.handle_config_post()
+        elif path == '/api/mictronics/upload':
+            self.handle_mictronics_upload_post()
         elif path == '/api/flights/batch-positions':
             self.handle_flights_batch_positions_post()
         else:
@@ -2695,6 +2717,93 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(error_bytes)))
             self.end_headers()
             self.wfile.write(error_bytes)
+            self.wfile.flush()
+
+    def handle_mictronics_upload_post(self):
+        """Handle POST /api/mictronics/upload - upload Mictronics reference file"""
+        try:
+            ctype = self.headers.get('Content-Type', '')
+            if 'multipart/form-data' not in ctype:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Expected multipart/form-data'}).encode())
+                return
+
+            fs = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ={
+                    'REQUEST_METHOD': 'POST',
+                    'CONTENT_TYPE': ctype,
+                },
+            )
+
+            file_item = fs['file'] if 'file' in fs else None
+            if file_item is None or getattr(file_item, 'file', None) is None:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'No file uploaded'}).encode())
+                return
+
+            original_name = os.path.basename(file_item.filename or 'mictronics_aircraft_db.txt')
+            ext = os.path.splitext(original_name)[1] or '.txt'
+            upload_dir = os.path.join('data', 'mictronics')
+            os.makedirs(upload_dir, exist_ok=True)
+
+            target_name = f"mictronics_aircraft_db{ext}"
+            target_path = os.path.join(upload_dir, target_name)
+
+            content = file_item.file.read()
+            if not content:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Uploaded file is empty'}).encode())
+                return
+
+            with open(target_path, 'wb') as out:
+                out.write(content)
+
+            uploaded_at = datetime.now().isoformat()
+            config = load_config()
+            if 'mictronics_aircraft_db' not in config or not isinstance(config.get('mictronics_aircraft_db'), dict):
+                config['mictronics_aircraft_db'] = {}
+            config['mictronics_aircraft_db']['enabled'] = True
+            config['mictronics_aircraft_db']['filename'] = target_path
+            config['mictronics_aircraft_db']['last_uploaded_at'] = uploaded_at
+
+            with open('config.json', 'w') as f:
+                json.dump(config, f, indent=4)
+
+            response = {
+                'success': True,
+                'message': 'Mictronics file uploaded',
+                'filename': target_path,
+                'original_filename': original_name,
+                'last_uploaded_at': uploaded_at,
+                'bytes': len(content),
+            }
+            response_bytes = json.dumps(response).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(response_bytes)))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(response_bytes)
+            self.wfile.flush()
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Mictronics upload error: {error_msg}")
+            import traceback
+            print(traceback.format_exc())
+            err_bytes = json.dumps({'error': error_msg}).encode('utf-8')
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(err_bytes)))
+            self.end_headers()
+            self.wfile.write(err_bytes)
             self.wfile.flush()
         except Exception as e:
             error_msg = str(e)
