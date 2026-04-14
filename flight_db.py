@@ -7,8 +7,15 @@ SQLite database for storing flight data snapshots for replay functionality
 import sqlite3
 import json
 import threading
+import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
+
+# Types that must never drive peer "model" inference (ground/tower pseudo types).
+_PEER_JUNK_TYPES = frozenset({
+    'twr', 'gnd', 'ground', 'unknown', 'unused', 'ship', 'rail', 'tbd',
+})
 
 class FlightDatabase:
     """SQLite database for storing flight data"""
@@ -22,6 +29,9 @@ class FlightDatabase:
         """
         self.db_path = db_path
         self.lock = threading.Lock()
+        # (normalized_type, excluded_icao, min_peers) -> (model_or_none, monotonic_ts)
+        self._peer_model_cache = {}
+        self._peer_cache_ttl = 120.0
         self._init_database()
         self._detect_column_names()
     
@@ -627,6 +637,72 @@ class FlightDatabase:
             
             conn.commit()
             conn.close()
+
+    def get_peer_estimated_model(self, type_code, exclude_icao=None, min_peers=2):
+        """
+        Pick the most common aircraft.model among rows sharing the same ICAO type code,
+        excluding the given ICAO (so the current tail does not vote). Used to fill
+        missing models when Mictronics/API only provide type. Results are cached briefly.
+        """
+        from flight_info import sanitize_aircraft_label_for_display
+
+        if type_code is None:
+            return None
+        s = str(type_code).strip().upper()
+        if not s or s.lower() in _PEER_JUNK_TYPES:
+            return None
+        if sanitize_aircraft_label_for_display(s) is None:
+            return None
+        nt = s
+        min_peers = max(1, int(min_peers))
+        ex = (exclude_icao or '').strip().lower()
+        cache_key = (nt, ex, min_peers)
+        now = time.monotonic()
+        with self.lock:
+            hit = self._peer_model_cache.get(cache_key)
+            if hit and (now - hit[1]) < self._peer_cache_ttl:
+                return hit[0]
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            if ex:
+                cursor.execute(
+                    '''
+                    SELECT model FROM aircraft
+                    WHERE UPPER(TRIM(COALESCE(type, ''))) = ?
+                      AND model IS NOT NULL AND TRIM(model) != ''
+                      AND LOWER(icao) != ?
+                    ''',
+                    (nt, ex),
+                )
+            else:
+                cursor.execute(
+                    '''
+                    SELECT model FROM aircraft
+                    WHERE UPPER(TRIM(COALESCE(type, ''))) = ?
+                      AND model IS NOT NULL AND TRIM(model) != ''
+                    ''',
+                    (nt,),
+                )
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
+
+        counter = Counter()
+        for (m,) in rows:
+            mm = str(m).strip()
+            if mm:
+                counter[mm] += 1
+        total = sum(counter.values())
+        if total < min_peers:
+            res = None
+        else:
+            res = sorted(counter.items(), key=lambda x: (-x[1], x[0]))[0][0]
+
+        with self.lock:
+            self._peer_model_cache[cache_key] = (res, now)
+        return res
     
     def get_active_flight(self, icao):
         """

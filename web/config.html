@@ -629,6 +629,28 @@
             font-size: 0.9em;
             margin-top: 4px;
         }
+
+        .mictronics-import-badge {
+            display: inline-block;
+            margin-top: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.82em;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+
+        .mictronics-import-badge.success {
+            background: rgba(90, 122, 138, 0.2);
+            color: var(--text-primary);
+            border-color: var(--border-color);
+        }
+
+        .mictronics-import-badge.pending {
+            background: rgba(139, 168, 184, 0.2);
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+        }
     </style>
 </head>
 <body>
@@ -920,6 +942,11 @@
                                 <span id="mictronics_uploaded_filename"></span>
                             </span>
                             <span class="help-text">
+                                Last imported: <strong id="mictronics_last_imported">Never</strong> · Records indexed:
+                                <strong id="mictronics_record_count">0</strong>
+                            </span>
+                            <span id="mictronics_import_badge" class="mictronics-import-badge pending">No successful import yet</span>
+                            <span class="help-text">
                                 This file may become outdated over time. Check for newer exports at
                                 <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">Mictronics aircraft database downloads</a>.
                             </span>
@@ -1103,9 +1130,24 @@
         function updateMictronicsMetaDisplay(mdb) {
             const lastEl = document.getElementById('mictronics_last_uploaded');
             const nameEl = document.getElementById('mictronics_uploaded_filename');
+            const importedEl = document.getElementById('mictronics_last_imported');
+            const countEl = document.getElementById('mictronics_record_count');
+            const badgeEl = document.getElementById('mictronics_import_badge');
             if (lastEl) lastEl.textContent = formatIsoTimestamp(mdb?.last_uploaded_at);
             if (nameEl) {
                 nameEl.textContent = mdb?.filename ? ` (${mdb.filename})` : '';
+            }
+            if (importedEl) importedEl.textContent = formatIsoTimestamp(mdb?.last_imported_at);
+            const count = Number.isFinite(Number(mdb?.record_count)) ? Number(mdb.record_count) : 0;
+            if (countEl) countEl.textContent = String(count);
+            if (badgeEl) {
+                if (count > 0) {
+                    badgeEl.className = 'mictronics-import-badge success';
+                    badgeEl.textContent = 'Import successful';
+                } else {
+                    badgeEl.className = 'mictronics-import-badge pending';
+                    badgeEl.textContent = 'No successful import yet';
+                }
             }
         }
 
@@ -1138,7 +1180,9 @@
                 }
                 updateMictronicsMetaDisplay({
                     filename: result.filename,
-                    last_uploaded_at: result.last_uploaded_at
+                    last_uploaded_at: result.last_uploaded_at,
+                    last_imported_at: result.last_imported_at,
+                    record_count: result.record_count
                 });
                 const micToggle = document.getElementById('mictronics_enabled');
                 if (micToggle) micToggle.checked = true;
@@ -1243,7 +1287,7 @@
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
                     'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days',
-                    'mictronics_enabled', 'mictronics_last_uploaded'
+                    'mictronics_enabled', 'mictronics_last_uploaded', 'mictronics_last_imported', 'mictronics_record_count'
                 ];
                 
                 const missingElements = requiredIds.filter(id => !document.getElementById(id));
@@ -1424,7 +1468,9 @@
                 mictronics_aircraft_db: {
                     enabled: document.getElementById('mictronics_enabled').checked,
                     filename: null,
-                    last_uploaded_at: null
+                    last_uploaded_at: null,
+                    last_imported_at: null,
+                    record_count: null
                 }
             };
 
@@ -1435,6 +1481,8 @@
                     const currentMdb = currentConfig.mictronics_aircraft_db || {};
                     config.mictronics_aircraft_db.filename = currentMdb.filename || null;
                     config.mictronics_aircraft_db.last_uploaded_at = currentMdb.last_uploaded_at || null;
+                    config.mictronics_aircraft_db.last_imported_at = currentMdb.last_imported_at || null;
+                    config.mictronics_aircraft_db.record_count = Number.isFinite(Number(currentMdb.record_count)) ? Number(currentMdb.record_count) : null;
                 }
             } catch (e) {
                 console.warn('[SAVE] Could not preserve Mictronics file metadata from current config:', e);

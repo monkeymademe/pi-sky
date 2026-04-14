@@ -13,6 +13,9 @@ import asyncio
 import threading
 import warnings
 import cgi
+import re
+import gzip
+import zipfile
 from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import TCPServer, ThreadingMixIn
@@ -65,6 +68,200 @@ api_tracker_lock = threading.Lock()  # Lock for thread-safe access
 flight_db = None
 
 SSE_KEEPALIVE_INTERVAL = 15  # seconds between keep-alive comments
+MICROTONICS_DIR = os.path.join('data', 'mictronics')
+MICROTONICS_LOOKUP_PATH = os.path.join(MICROTONICS_DIR, 'lookup.json')
+
+
+def _normalize_icao24(value):
+    """Normalize ICAO24 to lowercase 6-hex string, or None if invalid."""
+    if value is None:
+        return None
+    v = str(value).strip().lower()
+    if re.fullmatch(r'[0-9a-f]{6}', v):
+        return v
+    return None
+
+
+def _record_from_mictronics_candidate(raw, fallback_icao=None):
+    """Convert a candidate dict into normalized lookup record."""
+    if not isinstance(raw, dict):
+        return None, None
+    icao = (
+        _normalize_icao24(raw.get('icao24'))
+        or _normalize_icao24(raw.get('icao'))
+        or _normalize_icao24(raw.get('hex'))
+        or _normalize_icao24(fallback_icao)
+    )
+    if not icao:
+        return None, None
+
+    rec = {}
+    registration = raw.get('registration') or raw.get('r') or raw.get('reg')
+    type_code = raw.get('t') or raw.get('type') or raw.get('icao_aircraft_type')
+    model = raw.get('model') or raw.get('desc')
+    manufacturer = raw.get('manufacturer')
+    operator = raw.get('operator')
+    country = raw.get('country')
+
+    if registration:
+        rec['registration'] = str(registration).strip()
+    if type_code:
+        rec['type'] = str(type_code).strip()
+    if model:
+        rec['model'] = str(model).strip()
+    if manufacturer:
+        rec['manufacturer'] = str(manufacturer).strip()
+    if operator:
+        rec['operator'] = str(operator).strip()
+    if country:
+        rec['country'] = str(country).strip()
+    return icao, rec
+
+
+def _iter_mictronics_json_records(obj, fallback_icao=None):
+    """Yield (icao, record_dict) from JSON object shapes commonly used by aircraft DB exports."""
+    if isinstance(obj, list):
+        for item in obj:
+            icao, rec = _record_from_mictronics_candidate(item, fallback_icao=fallback_icao)
+            if icao and rec:
+                yield icao, rec
+        return
+
+    if not isinstance(obj, dict):
+        return
+
+    # Single-record object
+    single_keys = {'icao24', 'icao', 'hex', 'registration', 'r', 't', 'type', 'model', 'desc'}
+    if any(k in obj for k in single_keys):
+        icao, rec = _record_from_mictronics_candidate(obj, fallback_icao=fallback_icao)
+        if icao and rec:
+            yield icao, rec
+        return
+
+    # Mapping keyed by ICAO24
+    for k, v in obj.items():
+        key_icao = _normalize_icao24(k)
+        if not key_icao:
+            continue
+        if isinstance(v, list) and v:
+            v = v[0]
+        icao, rec = _record_from_mictronics_candidate(v, fallback_icao=key_icao)
+        if icao and rec:
+            yield icao, rec
+
+
+def _fallback_icao_from_filename(path_name):
+    """Extract 6-hex ICAO24 from filename like '4d2268.json'."""
+    base = os.path.basename(path_name).lower()
+    base = re.sub(r'\.json(\.gz)?$', '', base)
+    return _normalize_icao24(base)
+
+
+def _parse_mictronics_json_bytes(data_bytes, source_name):
+    """Parse JSON bytes and yield normalized records."""
+    try:
+        obj = json.loads(data_bytes.decode('utf-8'))
+    except Exception:
+        return []
+    fallback_icao = _fallback_icao_from_filename(source_name)
+    pairs = list(_iter_mictronics_json_records(obj, fallback_icao=fallback_icao))
+    out_map = {}
+    for icao, rec in pairs:
+        if icao not in out_map:
+            out_map[icao] = {}
+        out_map[icao].update(rec)
+
+    # Mictronics sharded formats:
+    # - file "F.json" with keys like "AA640" => full ICAO "FAA640"
+    # - file "3C.json" with keys like "5EE3" => full ICAO "3C5EE3"
+    # In general, filename hex prefix + key hex suffix can form a 6-hex ICAO.
+    if isinstance(obj, dict):
+        base = os.path.basename(source_name).lower()
+        shard = re.sub(r'\.json(\.gz)?$', '', base)
+        if re.fullmatch(r'[0-9a-f]{1,6}', shard):
+            recovered = []
+            for k, v in obj.items():
+                key = str(k).strip()
+                if not re.fullmatch(r'[0-9a-fA-F]{1,6}', key):
+                    continue
+                combined = (shard + key).lower()
+                if len(combined) == 6 and re.fullmatch(r'[0-9a-f]{6}', combined):
+                    full = combined
+                    icao, rec = _record_from_mictronics_candidate(v, fallback_icao=full)
+                    if icao and rec:
+                        recovered.append((icao, rec))
+            for icao, rec in recovered:
+                if icao not in out_map:
+                    out_map[icao] = {}
+                out_map[icao].update(rec)
+    return list(out_map.items())
+
+
+def import_mictronics_lookup(uploaded_path):
+    """
+    Build a compact lookup index from uploaded Mictronics export.
+    Supports .zip containing many json/json.gz files, or direct .json/.json.gz files.
+    """
+    records = {}
+    files_scanned = 0
+    source_files_used = 0
+    lower = uploaded_path.lower()
+
+    def merge_pairs(pairs):
+        nonlocal source_files_used
+        if not pairs:
+            return
+        source_files_used += 1
+        for icao, rec in pairs:
+            if icao not in records:
+                records[icao] = {}
+            records[icao].update(rec)
+
+    if lower.endswith('.zip'):
+        with zipfile.ZipFile(uploaded_path, 'r') as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = info.filename
+                nlow = name.lower()
+                if not (nlow.endswith('.json') or nlow.endswith('.json.gz')):
+                    continue
+                files_scanned += 1
+                raw = zf.read(info)
+                if nlow.endswith('.json.gz'):
+                    try:
+                        raw = gzip.decompress(raw)
+                    except Exception:
+                        continue
+                merge_pairs(_parse_mictronics_json_bytes(raw, name))
+    elif lower.endswith('.json') or lower.endswith('.json.gz'):
+        files_scanned = 1
+        raw = open(uploaded_path, 'rb').read()
+        if lower.endswith('.json.gz'):
+            raw = gzip.decompress(raw)
+        merge_pairs(_parse_mictronics_json_bytes(raw, uploaded_path))
+    else:
+        # Best effort: try as JSON text even if extension is uncommon.
+        files_scanned = 1
+        raw = open(uploaded_path, 'rb').read()
+        merge_pairs(_parse_mictronics_json_bytes(raw, uploaded_path))
+
+    os.makedirs(MICROTONICS_DIR, exist_ok=True)
+    payload = {
+        'generated_at': datetime.now().isoformat(),
+        'source_file': uploaded_path,
+        'record_count': len(records),
+        'records': records
+    }
+    with open(MICROTONICS_LOOKUP_PATH, 'w', encoding='utf-8') as f:
+        json.dump(payload, f, ensure_ascii=True, separators=(',', ':'))
+
+    return {
+        'lookup_path': MICROTONICS_LOOKUP_PATH,
+        'record_count': len(records),
+        'files_scanned': files_scanned,
+        'source_files_used': source_files_used,
+    }
 
 
 class SSEClient:
@@ -189,6 +386,10 @@ def validate_config(config):
             return 'mictronics_aircraft_db.filename must be a string or null'
         if 'last_uploaded_at' in mdb and mdb['last_uploaded_at'] is not None and not isinstance(mdb['last_uploaded_at'], str):
             return 'mictronics_aircraft_db.last_uploaded_at must be a string or null'
+        if 'last_imported_at' in mdb and mdb['last_imported_at'] is not None and not isinstance(mdb['last_imported_at'], str):
+            return 'mictronics_aircraft_db.last_imported_at must be a string or null'
+        if 'record_count' in mdb and mdb['record_count'] is not None and not isinstance(mdb['record_count'], int):
+            return 'mictronics_aircraft_db.record_count must be an integer or null'
     
     return None  # Valid
 
@@ -220,6 +421,10 @@ def load_config():
                 config['mictronics_aircraft_db']['filename'] = None
             if 'last_uploaded_at' not in config['mictronics_aircraft_db']:
                 config['mictronics_aircraft_db']['last_uploaded_at'] = None
+            if 'last_imported_at' not in config['mictronics_aircraft_db']:
+                config['mictronics_aircraft_db']['last_imported_at'] = None
+            if 'record_count' not in config['mictronics_aircraft_db']:
+                config['mictronics_aircraft_db']['record_count'] = None
             # Legacy: map_generation.enabled was merged into inky.enabled
             if isinstance(config.get('map_generation'), dict):
                 config['map_generation'].pop('enabled', None)
@@ -1077,6 +1282,17 @@ def process_aircraft_data(aircraft_data):
         # This happens AFTER enriched data is fully populated
         if flight_db:
             try:
+                # If type is known but model is still missing after API/Mictronics, estimate
+                # from the most common model among other aircraft rows with the same type.
+                if icao != 'Unknown':
+                    _am = enriched.get('aircraft_model')
+                    _at = enriched.get('aircraft_type')
+                    if (not _am or not str(_am).strip()) and _at and str(_at).strip():
+                        _peer_model = flight_db.get_peer_estimated_model(_at, exclude_icao=icao)
+                        if _peer_model:
+                            enriched['aircraft_model'] = _peer_model
+                            if icao in flight_memory:
+                                flight_memory[icao]['aircraft_model'] = _peer_model
                 # Update aircraft record with info from flight_memory
                 aircraft_info = {
                     'registration': enriched.get('aircraft_registration'),
@@ -2767,22 +2983,31 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                 out.write(content)
 
             uploaded_at = datetime.now().isoformat()
+            import_stats = import_mictronics_lookup(target_path)
+            imported_at = datetime.now().isoformat()
             config = load_config()
             if 'mictronics_aircraft_db' not in config or not isinstance(config.get('mictronics_aircraft_db'), dict):
                 config['mictronics_aircraft_db'] = {}
             config['mictronics_aircraft_db']['enabled'] = True
             config['mictronics_aircraft_db']['filename'] = target_path
             config['mictronics_aircraft_db']['last_uploaded_at'] = uploaded_at
+            config['mictronics_aircraft_db']['last_imported_at'] = imported_at
+            config['mictronics_aircraft_db']['record_count'] = int(import_stats.get('record_count', 0))
 
             with open('config.json', 'w') as f:
                 json.dump(config, f, indent=4)
 
             response = {
                 'success': True,
-                'message': 'Mictronics file uploaded',
+                'message': 'Mictronics file uploaded and imported',
                 'filename': target_path,
                 'original_filename': original_name,
                 'last_uploaded_at': uploaded_at,
+                'last_imported_at': imported_at,
+                'lookup_path': import_stats.get('lookup_path'),
+                'record_count': import_stats.get('record_count'),
+                'files_scanned': import_stats.get('files_scanned'),
+                'source_files_used': import_stats.get('source_files_used'),
                 'bytes': len(content),
             }
             response_bytes = json.dumps(response).encode('utf-8')
@@ -2804,19 +3029,6 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(err_bytes)))
             self.end_headers()
             self.wfile.write(err_bytes)
-            self.wfile.flush()
-        except Exception as e:
-            error_msg = str(e)
-            print(f"Config POST error: {error_msg}")
-            import traceback
-            print(traceback.format_exc())
-            error_json = json.dumps({'error': error_msg})
-            error_bytes = error_json.encode('utf-8')
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Content-Length', str(len(error_bytes)))
-            self.end_headers()
-            self.wfile.write(error_bytes)
             self.wfile.flush()
 
     def handle_flights_batch_positions_post(self):

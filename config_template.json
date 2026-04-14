@@ -32,6 +32,8 @@
     "mictronics_aircraft_db": {
         "enabled": false,
         "filename": null,
-        "last_uploaded_at": null
+        "last_uploaded_at": null,
+        "last_imported_at": null,
+        "record_count": null
     }
 }

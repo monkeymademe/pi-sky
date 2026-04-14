@@ -8,6 +8,7 @@ Uses OpenFlights database to get airport country information
 import requests
 import sys
 import os
+import json
 import time
 from datetime import datetime
 from math import radians, cos, sin, asin, sqrt
@@ -15,6 +16,7 @@ from math import radians, cos, sin, asin, sqrt
 # OpenFlights airport database URL and cache file
 OPENFLIGHTS_AIRPORTS_URL = "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
 OPENFLIGHTS_AIRPORTS_CACHE = "airports_cache.dat"
+MICROTONICS_LOOKUP_PATH = os.path.join('data', 'mictronics', 'lookup.json')
 
 # In adsb.lol / ADSBExchange-style v2 responses, ac["type"] is the *message source*
 # (e.g. adsb_icao, mlat), not the aircraft type. ICAO type designator is ac["t"].
@@ -22,6 +24,11 @@ _ADSB_MSG_SOURCE_TYPES = frozenset({
     'adsb_icao', 'adsb_icao_nt', 'adsb_other', 'adsr_icao', 'adsr_other',
     'tisb_icao', 'tisb_trackid', 'mlat', 'mode_s', 'unknown',
 })
+
+_mictronics_lookup_cache = {
+    'mtime': None,
+    'records': {},
+}
 
 
 def sanitize_aircraft_label_for_display(value):
@@ -53,6 +60,51 @@ def sanitize_aircraft_info_dict(info):
                 continue
         out[k] = v
     return out if out else None
+
+
+def _load_mictronics_lookup_records():
+    """Load cached Mictronics lookup records from local generated index."""
+    try:
+        if not os.path.exists(MICROTONICS_LOOKUP_PATH):
+            _mictronics_lookup_cache['mtime'] = None
+            _mictronics_lookup_cache['records'] = {}
+            return {}
+        mtime = os.path.getmtime(MICROTONICS_LOOKUP_PATH)
+        if _mictronics_lookup_cache.get('mtime') == mtime:
+            return _mictronics_lookup_cache.get('records', {})
+        with open(MICROTONICS_LOOKUP_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get('records'), dict):
+            records = data.get('records', {})
+        elif isinstance(data, dict):
+            records = data
+        else:
+            records = {}
+        _mictronics_lookup_cache['mtime'] = mtime
+        _mictronics_lookup_cache['records'] = records
+        return records
+    except Exception:
+        return {}
+
+
+def get_aircraft_info_mictronics(icao):
+    """Get aircraft info from local Mictronics lookup index (if available)."""
+    if not icao:
+        return None
+    records = _load_mictronics_lookup_records()
+    rec = records.get(str(icao).strip().lower())
+    if not isinstance(rec, dict):
+        return None
+    out = {}
+    if rec.get('registration'):
+        out['registration'] = rec.get('registration')
+    if rec.get('type'):
+        out['type'] = rec.get('type')
+    if rec.get('model'):
+        out['model'] = rec.get('model')
+    if rec.get('manufacturer'):
+        out['manufacturer'] = rec.get('manufacturer')
+    return sanitize_aircraft_info_dict(out)
 
 
 # No static airport mapping - we use OpenFlights database for airport info
@@ -506,6 +558,13 @@ def get_aircraft_info_adsblol(icao):
                         result['manufacturer'] = db.get('manufacturer')
 
                 result = sanitize_aircraft_info_dict(result)
+                mictronics = get_aircraft_info_mictronics(icao)
+                if mictronics:
+                    # Fill missing fields from local reference data.
+                    for key in ('registration', 'type', 'model', 'manufacturer'):
+                        if not result.get(key) and mictronics.get(key):
+                            result[key] = mictronics.get(key)
+                    result = sanitize_aircraft_info_dict(result)
                 if result:
                     print(f"[{timestamp}] API SUCCESS: Aircraft info found for {icao}: {result}")
                     return result
@@ -517,6 +576,12 @@ def get_aircraft_info_adsblol(icao):
             print(f"[{timestamp}] API ERROR: Status {response.status_code} for {icao}")
     except Exception as e:
         print(f"[{timestamp}] API EXCEPTION: {icao} - {str(e)}")
+
+    # Local fallback when adsb.lol lacks db/model fields or request failed.
+    mictronics = get_aircraft_info_mictronics(icao)
+    if mictronics:
+        print(f"[{timestamp}] LOCAL LOOKUP: Aircraft info found for {icao}: {mictronics}")
+        return mictronics
     return None
 
 def haversine_distance(lat1, lon1, lat2, lon2):
