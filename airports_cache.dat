@@ -331,7 +331,7 @@
 334,"Anklam Airfield","Anklam","Germany",\N,"EDCA",53.832779,13.668611,16,1,"E","Europe/Berlin","airport","OurAirports"
 335,"Cottbus-Drewitz Airport","Cottbus","Germany","CBU","EDCD",51.889442,14.531944,272,1,"E","Europe/Berlin","airport","OurAirports"
 336,"Kamenz Airport","Kamenz","Germany",\N,"EDCM",51.29694366455078,14.1274995803833,495,1,"E","Europe/Berlin","airport","OurAirports"
-337,"Berlin-Schönefeld Airport","Berlin","Germany","SXF","EDDB",52.380001,13.5225,157,1,"E","Europe/Berlin","airport","OurAirports"
+337,"Berlin-Schönefeld Airport","Berlin","Germany","BER","EDDB",52.380001,13.5225,157,1,"E","Europe/Berlin","airport","OurAirports"
 338,"Dresden Airport","Dresden","Germany","DRS","EDDC",51.1328010559082,13.767200469970703,755,1,"E","Europe/Berlin","airport","OurAirports"
 339,"Erfurt Airport","Erfurt","Germany","ERF","EDDE",50.979801177978516,10.958100318908691,1036,1,"E","Europe/Berlin","airport","OurAirports"
 340,"Frankfurt am Main Airport","Frankfurt","Germany","FRA","EDDF",50.033333,8.570556,364,1,"E","Europe/Berlin","airport","OurAirports"
