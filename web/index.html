@@ -217,16 +217,10 @@
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
-            cursor: pointer;
+            transition: background 0.3s ease;
             display: grid;
             grid-template-rows: auto 1fr auto;
             min-height: 280px;
-        }
-        
-        .flight-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
         }
         
         .flight-card.new {
@@ -241,11 +235,6 @@
             border-top: 4px solid var(--palette-5);
         }
         
-        .flight-card.selected {
-            background: var(--selected-bg);
-            box-shadow: 0 8px 16px rgba(61, 80, 102, 0.28);
-        }
-
         .flight-card.is-leaving {
             pointer-events: none;
         }
@@ -351,13 +340,28 @@
             padding: 4px;
             transition: background 0.3s ease;
         }
+
+        .route-plane-glyph {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background-color: var(--plane-color, var(--route-color));
+            mask-image: url('/assets/plane-route.svg');
+            mask-repeat: no-repeat;
+            mask-position: center;
+            mask-size: contain;
+            -webkit-mask-image: url('/assets/plane-route.svg');
+            -webkit-mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            -webkit-mask-size: contain;
+        }
         
         /* Footer with flight details */
         .flight-card-footer {
             background: var(--card-footer-bg);
             padding: 16px 20px;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 16px;
             border-top: 1px solid var(--border-color);
             font-size: 16px;
@@ -383,6 +387,50 @@
             font-weight: bold;
             color: var(--text-primary);
             transition: color 0.3s ease;
+        }
+
+        .vertical-rate-icon {
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+        }
+
+        .vertical-rate-icon-glyph {
+            width: 22px;
+            height: 22px;
+            display: block;
+            background-color: currentColor;
+            mask-image: url('/assets/plane-side.svg');
+            mask-repeat: no-repeat;
+            mask-position: center;
+            mask-size: contain;
+            -webkit-mask-image: url('/assets/plane-side.svg');
+            -webkit-mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            -webkit-mask-size: contain;
+        }
+
+        .vertical-rate-icon {
+            transition: transform 0.2s ease, color 0.2s ease;
+        }
+
+        .vertical-rate-icon-cell {
+            align-items: flex-start;
+            justify-content: flex-start;
+        }
+
+        .vertical-rate-icon-cell .vertical-rate-icon {
+            width: 39px;
+            height: 100%;
+            min-height: 51px;
+        }
+
+        .vertical-rate-icon-cell .vertical-rate-icon-glyph {
+            width: 100%;
+            height: 100%;
         }
         
         .flight-detail-value[style*="monospace"] {
@@ -731,6 +779,19 @@
             const sign = rate >= 0 ? '+' : '';
             return `${sign}${Math.round(rate)} ft/min`;
         }
+
+        function getVerticalRateVisual(rate) {
+            if (rate === null || rate === undefined || Number.isNaN(Number(rate))) {
+                return { angle: 0, state: 'level' };
+            }
+            const numericRate = Number(rate);
+            if (Math.abs(numericRate) < 100) {
+                return { angle: 0, state: 'level' };
+            }
+            const angle = numericRate > 0 ? -18 : 18; // Keep the visual simple: up, down, or level.
+            const state = numericRate > 0 ? 'climb' : 'descend';
+            return { angle, state };
+        }
         
         function formatDistance(distance) {
             if (distance === null || distance === undefined) return 'N/A';
@@ -838,8 +899,6 @@
             const acModel = sanitizeAircraftLabel(flight.aircraft_model);
             const acType = sanitizeAircraftLabel(flight.aircraft_type);
             const acKind = acModel || acType;
-            const hasAircraftKind = !!acKind;
-            const hasAircraftFooter = hasAircraftKind || !!flight.aircraft_registration;
             const hasCallsign = !!(flight.callsign && flight.callsign !== 'Unidentified');
             const noRouteSubtext = hasCallsign
                 ? 'No route found'
@@ -852,11 +911,15 @@
             
             // Format origin section
             const originCode = flight.origin || '---';
-            const originCountry = flight.origin_country ? `${getCountryFlag(flight.origin_country)} ${flight.origin_country}` : '';
+            const originCityCountry = flight.origin_country
+                ? `${getCountryFlag(flight.origin_country)} ${flight.origin_city ? `${flight.origin_city}, ` : ''}${flight.origin_country}`
+                : (flight.origin_city || '');
             
             // Format destination section
             const destCode = flight.destination || '---';
-            const destCountry = flight.destination_country ? `${getCountryFlag(flight.destination_country)} ${flight.destination_country}` : '';
+            const destCityCountry = flight.destination_country
+                ? `${getCountryFlag(flight.destination_country)} ${flight.destination_city ? `${flight.destination_city}, ` : ''}${flight.destination_country}`
+                : (flight.destination_city || '');
             
             // Plane SVG icon with current theme color
             // Check if flight is unidentified: no callsign OR no route info
@@ -864,11 +927,8 @@
             const hasRoute = flight.origin && flight.destination;
             const isUnidentified = !flight.callsign || flight.callsign === 'Unidentified' || (!hasRoute && flight.status === 'unidentified');
             const routeColor = isUnidentified ? '#8ba8b8' : (getComputedStyle(document.documentElement).getPropertyValue('--route-color').trim() || '#3d5066');
-            const planeIcon = `
-                <svg class="route-plane-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="${routeColor}"/>
-                </svg>
-            `;
+            const verticalVisual = getVerticalRateVisual(flight.vertical_rate);
+            const planeIcon = `<span class="route-plane-icon"><span class="route-plane-glyph" style="--plane-color: ${routeColor};"></span></span>`;
             
             card.innerHTML = `
                 <!-- Header -->
@@ -885,14 +945,10 @@
                 <!-- Route Section with Plane -->
                 ${!hasRoute ? `
                 <div class="flight-card-route" style="padding: 24px 20px; text-align: center; display: flex; align-items: center; justify-content: center;">
-                    <div style="color: var(--text-muted); font-size: 0.85em; line-height: 1.4;">
-                        ${hasAircraftKind ? `
-                            <div style="font-size: 1.5em; font-weight: bold; color: var(--route-color); margin-bottom: 4px;">
-                                ${acKind}
-                                ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
-                            </div>
-                        ` : ''}
-                        <div style="font-style: italic; color: var(--text-secondary);">${noRouteSubtext}</div>
+                    <div style="color: var(--text-muted); line-height: 1.4;">
+                        <div class="route-airport-code" style="font-size: 1.5em; color: var(--text-secondary); letter-spacing: 0.02em;">
+                            ${noRouteSubtext}
+                        </div>
                     </div>
                 </div>
                 ` : `
@@ -900,7 +956,8 @@
                     <div class="route-section">
                         <div class="route-section-label">From</div>
                         <div class="route-airport-code">${originCode}</div>
-                        ${originCountry ? `<div class="route-country-info">${originCountry}</div>` : ''}
+                        <div style="font-size: 0.78em; color: var(--text-muted); margin-top: 2px;">${flight.origin_airport_name || 'Airport pending'}</div>
+                        ${originCityCountry ? `<div class="route-country-info">${originCityCountry}</div>` : ''}
                     </div>
                     
                     <div class="route-plane-container">
@@ -911,88 +968,59 @@
                     <div class="route-section" style="text-align: right;">
                         <div class="route-section-label">To</div>
                         <div class="route-airport-code">${destCode}</div>
-                        ${destCountry ? `<div class="route-country-info" style="justify-content: flex-end;">${destCountry}</div>` : ''}
+                        <div style="font-size: 0.78em; color: var(--text-muted); margin-top: 2px;">${flight.destination_airport_name || 'Airport pending'}</div>
+                        ${destCityCountry ? `<div class="route-country-info" style="justify-content: flex-end;">${destCityCountry}</div>` : ''}
                     </div>
                 </div>
                 `}
                 
                 <!-- Footer with Details -->
                 <div class="flight-card-footer">
+                    <div class="flight-detail-item" style="grid-column: span 2;">
+                        <div class="flight-detail-label">Position</div>
+                        <div class="flight-detail-value">${flight.lat !== null && flight.lat !== undefined && flight.lon !== null && flight.lon !== undefined ? formatCoordinates(flight.lat, flight.lon) : 'n/a'}</div>
+                    </div>
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Distance</div>
+                        <div class="flight-detail-value">${flight.distance !== null && flight.distance !== undefined ? formatDistance(flight.distance) : 'n/a'}</div>
+                    </div>
                     <div class="flight-detail-item">
                         <div class="flight-detail-label">Altitude</div>
-                        <div class="flight-detail-value">${formatAltitude(flight.altitude)}</div>
+                        <div class="flight-detail-value">${flight.altitude !== null && flight.altitude !== undefined ? formatAltitude(flight.altitude) : 'n/a'}</div>
                     </div>
                     <div class="flight-detail-item">
                         <div class="flight-detail-label">Speed</div>
-                        <div class="flight-detail-value">${formatSpeed(flight.speed)}</div>
+                        <div class="flight-detail-value">${flight.speed !== null && flight.speed !== undefined ? formatSpeed(flight.speed) : 'n/a'}</div>
                     </div>
                     <div class="flight-detail-item">
                         <div class="flight-detail-label">Track</div>
-                        <div class="flight-detail-value">${formatTrack(flight.track)}</div>
+                        <div class="flight-detail-value">${flight.track !== null && flight.track !== undefined ? formatTrack(flight.track) : 'n/a'}</div>
                     </div>
-                    ${flight.vertical_rate !== null && flight.vertical_rate !== undefined ? `
                     <div class="flight-detail-item">
-                        <div class="flight-detail-label">Vertical</div>
-                        <div class="flight-detail-value">${formatVerticalRate(flight.vertical_rate)}</div>
+                        <div class="flight-detail-label">Vertical Rate</div>
+                        <div class="flight-detail-value">${flight.vertical_rate !== null && flight.vertical_rate !== undefined ? formatVerticalRate(flight.vertical_rate) : 'n/a'}</div>
                     </div>
-                    ` : ''}
-                    ${flight.distance !== null && flight.distance !== undefined ? `
-                    <div class="flight-detail-item">
-                        <div class="flight-detail-label">Distance</div>
-                        <div class="flight-detail-value">${formatDistance(flight.distance)}</div>
-                    </div>
-                    ` : ''}
-                    ${flight.squawk ? `
-                    <div class="flight-detail-item">
-                        <div class="flight-detail-label">Squawk</div>
-                        <div class="flight-detail-value" style="font-family: monospace;">${flight.squawk}</div>
-                    </div>
-                    ` : ''}
-                    ${flight.lat !== null && flight.lat !== undefined && flight.lon !== null && flight.lon !== undefined ? `
-                    <div class="flight-detail-item" style="grid-column: 1 / -1;">
-                        <div class="flight-detail-label">Location</div>
-                        <div class="flight-detail-value" style="font-family: monospace; font-size: 14px;">${formatCoordinates(flight.lat, flight.lon)}</div>
-                    </div>
-                    ` : ''}
-                    ${hasAircraftFooter ? `
-                    <div class="flight-detail-item" style="grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;">
-                        <div style="flex: 1;">
-                            <div class="flight-detail-label">Aircraft</div>
-                            <div class="flight-detail-value">
-                                ${acKind || 'Unknown'}
-                                ${flight.aircraft_registration ? ` (${flight.aircraft_registration})` : ''}
-                            </div>
+                    <div class="flight-detail-item vertical-rate-icon-cell" style="grid-column: span 2;">
+                        <div class="vertical-rate-icon ${verticalVisual.state}">
+                            <span class="vertical-rate-icon-glyph" style="transform: rotate(${verticalVisual.angle}deg);"></span>
                         </div>
                     </div>
-                    ` : (flight.status === 'unidentified' ? `
-                    <div class="flight-detail-item" style="grid-column: 1 / -1;">
-                        <div class="flight-detail-label">Aircraft Info</div>
-                        <div class="flight-detail-value" style="color: var(--text-muted); font-style: italic;">No aircraft information available</div>
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Tail Number</div>
+                        <div class="flight-detail-value">${flight.aircraft_registration || 'n/a'}</div>
                     </div>
-                    ` : '')}
+                    <div class="flight-detail-item">
+                        <div class="flight-detail-label">Squawk</div>
+                        <div class="flight-detail-value">${flight.squawk || 'n/a'}</div>
+                    </div>
+                    <div class="flight-detail-item" style="grid-column: 1 / -1;">
+                        <div class="flight-detail-label">Aircraft</div>
+                        <div class="flight-detail-value">${acKind || 'n/a'}</div>
+                    </div>
                 </div>
             `;
             
-            // Add click handler
-            card.addEventListener('click', () => {
-                selectFlight(flight.icao);
-            });
-            
             return card;
-        }
-        
-        function selectFlight(icao) {
-            // Remove previous selection
-            document.querySelectorAll('.flight-card').forEach(card => {
-                card.classList.remove('selected');
-            });
-            
-            // Add selection to clicked card
-            const card = document.querySelector(`[data-icao="${icao}"]`);
-            if (card) {
-                card.classList.add('selected');
-                card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
         }
         
         function renderEmptyState(container, title, subtitle) {
