@@ -62,7 +62,42 @@
             padding: 20px;
             color: var(--text-primary);
             transition: background 0.3s ease, color 0.3s ease;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
+            -webkit-text-size-adjust: 100%;
         }
+
+        a, button, input, label {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        a, button {
+            touch-action: manipulation;
+        }
+
+        .touch-scroll-overlay {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(260px, 78vw);
+            height: 44px;
+            border: 1px solid var(--border-color);
+            background: rgba(26, 38, 52, 0.62);
+            color: #fff;
+            border-radius: 999px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            z-index: 5000;
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
+        }
+
+        .touch-scroll-overlay.top { top: 8px; }
+        .touch-scroll-overlay.bottom { bottom: 8px; }
+        .touch-scroll-overlay { display: flex; }
 
         .container {
             max-width: 1400px;
@@ -654,6 +689,8 @@
     </style>
 </head>
 <body>
+    <button type="button" class="touch-scroll-overlay top" aria-label="Scroll up" onclick="scrollPageByStep(-1)">▲</button>
+    <button type="button" class="touch-scroll-overlay bottom" aria-label="Scroll down" onclick="scrollPageByStep(1)">▼</button>
     <div class="container">
         <div class="header">
             <div class="header-brand">
@@ -805,6 +842,13 @@
                                     <label for="enable_config_page">Enable config page</label>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="enable_config_page" name="enable_config_page">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="toggle-item">
+                                    <label for="flipoff_enabled">Enable FlipOff section</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="flipoff_enabled" name="flipoff_enabled">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
@@ -1120,6 +1164,11 @@
             updateThemeToggle(newTheme);
         }
 
+        function scrollPageByStep(direction) {
+            const delta = Math.round(window.innerHeight * 0.55) * direction;
+            window.scrollBy({ top: delta, behavior: 'smooth' });
+        }
+
         function updateThemeToggle(theme) {
             const toggle = document.getElementById('themeToggle');
             const iconPath = document.getElementById('themeIconPath');
@@ -1324,7 +1373,7 @@
                 const requiredIds = [
                     'dump1090_url', 'receiver_lat', 'receiver_lon', 'hide_receiver', 'show_test_flight',
                     'http_host', 'http_port', 'websocket_host', 'websocket_port',
-                    'enable_config_page',
+                    'enable_config_page', 'flipoff_enabled',
                     'inky_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
@@ -1387,6 +1436,7 @@
                 setValue('websocket_host', config.websocket_host || '0.0.0.0');
                 setValue('websocket_port', config.websocket_port || 8765);
                 setChecked('enable_config_page', config.enable_config_page !== false);
+                setChecked('flipoff_enabled', config.flipoff_enabled !== false);
 
                 const ink = config.inky || {};
                 setChecked('inky_enabled', ink.enabled === true);
@@ -1483,6 +1533,7 @@
                 hide_receiver: document.getElementById('hide_receiver').checked,
                 show_test_flight: document.getElementById('show_test_flight').checked,
                 enable_config_page: document.getElementById('enable_config_page').checked,
+                flipoff_enabled: document.getElementById('flipoff_enabled').checked,
                 http_host: document.getElementById('http_host').value,
                 http_port: parseInt(document.getElementById('http_port').value),
                 websocket_host: document.getElementById('websocket_host').value,

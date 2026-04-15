@@ -6,6 +6,7 @@
     "hide_receiver": false,
     "show_test_flight": false,
     "enable_config_page": true,
+    "flipoff_enabled": true,
     "http_host": "0.0.0.0",
     "http_port": 5050,
     "websocket_host": "0.0.0.0",
