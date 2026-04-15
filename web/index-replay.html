@@ -108,7 +108,7 @@
 
         .touch-scroll-overlay.top { top: 8px; }
         .touch-scroll-overlay.bottom { bottom: 8px; }
-        .touch-scroll-overlay { display: flex; }
+        .touch-scroll-overlay { display: none; }
         
         .container {
             max-width: 1400px;
@@ -253,6 +253,13 @@
             width: 20px;
             height: 20px;
             fill: currentColor;
+        }
+
+        .touch-helper-toggle-icon img {
+            width: 20px;
+            height: 20px;
+            display: block;
+            filter: brightness(0) saturate(100%) invert(30%) sepia(18%) saturate(616%) hue-rotate(163deg) brightness(93%) contrast(88%);
         }
 
         .history-flight-plane {
@@ -1478,6 +1485,14 @@
                         </div>
                     </div>
                 </div>
+                <div class="theme-toggle-container" id="touchHelpersToggleContainer" style="display: none;">
+                    <div class="theme-toggle-icon touch-helper-toggle-icon" aria-hidden="true">
+                        <img src="assets/bootstrap-arrows-vertical.svg" alt="">
+                    </div>
+                    <div class="theme-toggle" id="touchHelpersToggle" onclick="toggleTouchScrollHelpers()" aria-label="Toggle scroll helpers">
+                        <div class="theme-toggle-slider"></div>
+                    </div>
+                </div>
                 <div class="theme-toggle-container">
                     <div class="theme-toggle-icon" id="themeIcon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
@@ -2486,6 +2501,60 @@
         function scrollPageByStep(direction) {
             const delta = Math.round(window.innerHeight * 0.55) * direction;
             window.scrollBy({ top: delta, behavior: 'smooth' });
+            setTimeout(updateTouchScrollHelpersVisibility, 260);
+        }
+
+        let touchScrollHelpersEnabled = localStorage.getItem('touchScrollHelpersEnabled') !== 'false';
+        let touchScrollHelpersToggleVisible = true;
+        function updateTouchScrollHelpersVisibility() {
+            const topBtn = document.querySelector('.touch-scroll-overlay.top');
+            const bottomBtn = document.querySelector('.touch-scroll-overlay.bottom');
+            if (!topBtn || !bottomBtn) return;
+
+            if (!touchScrollHelpersEnabled || !touchScrollHelpersToggleVisible) {
+                topBtn.style.display = 'none';
+                bottomBtn.style.display = 'none';
+                return;
+            }
+
+            const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+            if (maxScroll <= 2) {
+                topBtn.style.display = 'none';
+                bottomBtn.style.display = 'none';
+                return;
+            }
+
+            const y = window.scrollY || window.pageYOffset || 0;
+            topBtn.style.display = y <= 2 ? 'none' : 'flex';
+            bottomBtn.style.display = y >= (maxScroll - 2) ? 'none' : 'flex';
+        }
+
+        function updateTouchScrollHelpersToggleUI() {
+            const toggle = document.getElementById('touchHelpersToggle');
+            if (!toggle) return;
+            toggle.classList.toggle('active', touchScrollHelpersEnabled);
+        }
+
+        function setTouchScrollHelpersEnabled(enabled, persist = true) {
+            touchScrollHelpersEnabled = !!enabled;
+            if (persist) {
+                localStorage.setItem('touchScrollHelpersEnabled', touchScrollHelpersEnabled ? 'true' : 'false');
+            }
+            updateTouchScrollHelpersToggleUI();
+            updateTouchScrollHelpersVisibility();
+        }
+
+        function setTouchScrollHelpersToggleVisible(visible) {
+            touchScrollHelpersToggleVisible = !!visible;
+            const wrap = document.getElementById('touchHelpersToggleContainer');
+            if (wrap) {
+                wrap.style.display = touchScrollHelpersToggleVisible ? 'flex' : 'none';
+            }
+            updateTouchScrollHelpersVisibility();
+        }
+
+        function toggleTouchScrollHelpers() {
+            setTouchScrollHelpersEnabled(!touchScrollHelpersEnabled, true);
         }
         
         function initTheme() {
@@ -2513,8 +2582,10 @@
                         link.style.display = 'none';
                     });
                 }
+                setTouchScrollHelpersToggleVisible(config.touch_scroll_helpers_enabled !== false);
             } catch (e) {
                 // Keep nav unchanged if config is unavailable
+                setTouchScrollHelpersToggleVisible(true);
             }
         }
         
@@ -3851,7 +3922,9 @@
         // Initialize
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
+            updateTouchScrollHelpersToggleUI();
             applyConfigPageVisibility();
+            updateTouchScrollHelpersVisibility();
             initOverviewMap();
             loadFlights();
             ['filterAircraftFixed', 'filterAircraftHelicopter', 'filterAircraftUnknown'].forEach((id) => {
@@ -4016,6 +4089,8 @@
                     overviewMap.removeLayer(polyline);
                 }
             });
+        window.addEventListener('scroll', updateTouchScrollHelpersVisibility, { passive: true });
+        window.addEventListener('resize', updateTouchScrollHelpersVisibility);
             mapPolylineEntries = [];
             const matched = overviewCache.allFlights.filter((f) => passesHistoryFilters(f, overviewCache.allFlights));
             const toShow = overviewFlightsWithCachedTracks(matched, overviewCache.positionsByFlightId);

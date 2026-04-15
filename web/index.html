@@ -106,7 +106,7 @@
 
         .touch-scroll-overlay.top { top: 8px; }
         .touch-scroll-overlay.bottom { bottom: 8px; }
-        .touch-scroll-overlay { display: flex; }
+        .touch-scroll-overlay { display: none; }
         
         .container {
             max-width: 1400px;
@@ -657,6 +657,13 @@
             fill: currentColor;
         }
 
+        .touch-helper-toggle-icon img {
+            width: 20px;
+            height: 20px;
+            display: block;
+            filter: brightness(0) saturate(100%) invert(30%) sepia(18%) saturate(616%) hue-rotate(163deg) brightness(93%) contrast(88%);
+        }
+
         .theme-toggle {
             position: relative;
             width: 50px;
@@ -728,6 +735,14 @@
                             <div class="stat-value" id="totalFlights">0</div>
                             <div class="stat-label">Total Detected</div>
                         </div>
+                    </div>
+                </div>
+                <div class="theme-toggle-container" id="touchHelpersToggleContainer" style="display: none;">
+                    <div class="theme-toggle-icon touch-helper-toggle-icon" aria-hidden="true">
+                        <img src="assets/bootstrap-arrows-vertical.svg" alt="">
+                    </div>
+                    <div class="theme-toggle" id="touchHelpersToggle" onclick="toggleTouchScrollHelpers()" aria-label="Toggle scroll helpers">
+                        <div class="theme-toggle-slider"></div>
                     </div>
                 </div>
                 <div class="theme-toggle-container">
@@ -1245,6 +1260,60 @@
         function scrollPageByStep(direction) {
             const delta = Math.round(window.innerHeight * 0.55) * direction;
             window.scrollBy({ top: delta, behavior: 'smooth' });
+            setTimeout(updateTouchScrollHelpersVisibility, 260);
+        }
+
+        let touchScrollHelpersEnabled = localStorage.getItem('touchScrollHelpersEnabled') !== 'false';
+        let touchScrollHelpersToggleVisible = true;
+        function updateTouchScrollHelpersVisibility() {
+            const topBtn = document.querySelector('.touch-scroll-overlay.top');
+            const bottomBtn = document.querySelector('.touch-scroll-overlay.bottom');
+            if (!topBtn || !bottomBtn) return;
+
+            if (!touchScrollHelpersEnabled || !touchScrollHelpersToggleVisible) {
+                topBtn.style.display = 'none';
+                bottomBtn.style.display = 'none';
+                return;
+            }
+
+            const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+            if (maxScroll <= 2) {
+                topBtn.style.display = 'none';
+                bottomBtn.style.display = 'none';
+                return;
+            }
+
+            const y = window.scrollY || window.pageYOffset || 0;
+            topBtn.style.display = y <= 2 ? 'none' : 'flex';
+            bottomBtn.style.display = y >= (maxScroll - 2) ? 'none' : 'flex';
+        }
+
+        function updateTouchScrollHelpersToggleUI() {
+            const toggle = document.getElementById('touchHelpersToggle');
+            if (!toggle) return;
+            toggle.classList.toggle('active', touchScrollHelpersEnabled);
+        }
+
+        function setTouchScrollHelpersEnabled(enabled, persist = true) {
+            touchScrollHelpersEnabled = !!enabled;
+            if (persist) {
+                localStorage.setItem('touchScrollHelpersEnabled', touchScrollHelpersEnabled ? 'true' : 'false');
+            }
+            updateTouchScrollHelpersToggleUI();
+            updateTouchScrollHelpersVisibility();
+        }
+
+        function setTouchScrollHelpersToggleVisible(visible) {
+            touchScrollHelpersToggleVisible = !!visible;
+            const wrap = document.getElementById('touchHelpersToggleContainer');
+            if (wrap) {
+                wrap.style.display = touchScrollHelpersToggleVisible ? 'flex' : 'none';
+            }
+            updateTouchScrollHelpersVisibility();
+        }
+
+        function toggleTouchScrollHelpers() {
+            setTouchScrollHelpersEnabled(!touchScrollHelpersEnabled, true);
         }
 
         // Update theme toggle switch based on current theme
@@ -1281,16 +1350,23 @@
                         link.style.display = 'none';
                     });
                 }
+                setTouchScrollHelpersToggleVisible(config.touch_scroll_helpers_enabled !== false);
             } catch (e) {
                 // Keep nav unchanged if config is unavailable
+                setTouchScrollHelpersToggleVisible(true);
             }
         }
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
+            updateTouchScrollHelpersToggleUI();
             applyConfigPageVisibility();
+            updateTouchScrollHelpersVisibility();
         });
+
+        window.addEventListener('scroll', updateTouchScrollHelpersVisibility, { passive: true });
+        window.addEventListener('resize', updateTouchScrollHelpersVisibility);
     </script>
     <script type="module">
         try {

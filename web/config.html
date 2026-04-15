@@ -97,7 +97,7 @@
 
         .touch-scroll-overlay.top { top: 8px; }
         .touch-scroll-overlay.bottom { bottom: 8px; }
-        .touch-scroll-overlay { display: flex; }
+        .touch-scroll-overlay { display: none; }
 
         .container {
             max-width: 1400px;
@@ -251,6 +251,13 @@
             width: 20px;
             height: 20px;
             fill: currentColor;
+        }
+
+        .touch-helper-toggle-icon img {
+            width: 20px;
+            height: 20px;
+            display: block;
+            filter: brightness(0) saturate(100%) invert(30%) sepia(18%) saturate(616%) hue-rotate(163deg) brightness(93%) contrast(88%);
         }
 
         .theme-toggle {
@@ -719,6 +726,14 @@
                         </div>
                     </div>
                 </div>
+                <div class="theme-toggle-container" id="touchHelpersToggleContainer" style="display: none;">
+                    <div class="theme-toggle-icon touch-helper-toggle-icon" aria-hidden="true">
+                        <img src="assets/bootstrap-arrows-vertical.svg" alt="">
+                    </div>
+                    <div class="theme-toggle" id="touchHelpersToggle" onclick="toggleTouchScrollHelpers()" aria-label="Toggle scroll helpers">
+                        <div class="theme-toggle-slider"></div>
+                    </div>
+                </div>
                 <div class="theme-toggle-container">
                     <div class="theme-toggle-icon" id="themeIcon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
@@ -842,6 +857,13 @@
                                     <label for="enable_config_page">Enable config page</label>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="enable_config_page" name="enable_config_page">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="toggle-item">
+                                    <label for="touch_scroll_helpers_enabled">Show scroll-helper toggle in nav bar</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="touch_scroll_helpers_enabled" name="touch_scroll_helpers_enabled">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
@@ -1167,6 +1189,60 @@
         function scrollPageByStep(direction) {
             const delta = Math.round(window.innerHeight * 0.55) * direction;
             window.scrollBy({ top: delta, behavior: 'smooth' });
+            setTimeout(updateTouchScrollHelpersVisibility, 260);
+        }
+
+        let touchScrollHelpersEnabled = localStorage.getItem('touchScrollHelpersEnabled') !== 'false';
+        let touchScrollHelpersToggleVisible = true;
+        function updateTouchScrollHelpersVisibility() {
+            const topBtn = document.querySelector('.touch-scroll-overlay.top');
+            const bottomBtn = document.querySelector('.touch-scroll-overlay.bottom');
+            if (!topBtn || !bottomBtn) return;
+
+            if (!touchScrollHelpersEnabled || !touchScrollHelpersToggleVisible) {
+                topBtn.style.display = 'none';
+                bottomBtn.style.display = 'none';
+                return;
+            }
+
+            const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+            if (maxScroll <= 2) {
+                topBtn.style.display = 'none';
+                bottomBtn.style.display = 'none';
+                return;
+            }
+
+            const y = window.scrollY || window.pageYOffset || 0;
+            topBtn.style.display = y <= 2 ? 'none' : 'flex';
+            bottomBtn.style.display = y >= (maxScroll - 2) ? 'none' : 'flex';
+        }
+
+        function updateTouchScrollHelpersToggleUI() {
+            const toggle = document.getElementById('touchHelpersToggle');
+            if (!toggle) return;
+            toggle.classList.toggle('active', touchScrollHelpersEnabled);
+        }
+
+        function setTouchScrollHelpersEnabled(enabled, persist = true) {
+            touchScrollHelpersEnabled = !!enabled;
+            if (persist) {
+                localStorage.setItem('touchScrollHelpersEnabled', touchScrollHelpersEnabled ? 'true' : 'false');
+            }
+            updateTouchScrollHelpersToggleUI();
+            updateTouchScrollHelpersVisibility();
+        }
+
+        function setTouchScrollHelpersToggleVisible(visible) {
+            touchScrollHelpersToggleVisible = !!visible;
+            const wrap = document.getElementById('touchHelpersToggleContainer');
+            if (wrap) {
+                wrap.style.display = touchScrollHelpersToggleVisible ? 'flex' : 'none';
+            }
+            updateTouchScrollHelpersVisibility();
+        }
+
+        function toggleTouchScrollHelpers() {
+            setTouchScrollHelpersEnabled(!touchScrollHelpersEnabled, true);
         }
 
         function updateThemeToggle(theme) {
@@ -1352,6 +1428,7 @@
                 console.log('[loadConfig] dump1090_url:', config.dump1090_url);
                 console.log('[loadConfig] receiver_lat:', config.receiver_lat);
                 console.log('[loadConfig] About to populate form fields...');
+                setTouchScrollHelpersToggleVisible(config.touch_scroll_helpers_enabled !== false);
 
                 if (config.enable_config_page === false) {
                     const warningEl = document.getElementById('configDisabledWarning');
@@ -1373,7 +1450,7 @@
                 const requiredIds = [
                     'dump1090_url', 'receiver_lat', 'receiver_lon', 'hide_receiver', 'show_test_flight',
                     'http_host', 'http_port', 'websocket_host', 'websocket_port',
-                    'enable_config_page', 'flipoff_enabled',
+                    'enable_config_page', 'touch_scroll_helpers_enabled', 'flipoff_enabled',
                     'inky_enabled', 'map_min_interval', 'map_prefer_closest', 'map_require_route',
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
@@ -1436,6 +1513,7 @@
                 setValue('websocket_host', config.websocket_host || '0.0.0.0');
                 setValue('websocket_port', config.websocket_port || 8765);
                 setChecked('enable_config_page', config.enable_config_page !== false);
+                setChecked('touch_scroll_helpers_enabled', config.touch_scroll_helpers_enabled !== false);
                 setChecked('flipoff_enabled', config.flipoff_enabled !== false);
 
                 const ink = config.inky || {};
@@ -1498,6 +1576,7 @@
                     console.log(`Retrying in 1 second... (${retryCount + 1}/${maxRetries})`);
                     setTimeout(() => loadConfig(retryCount + 1), 1000);
                 } else {
+                    setTouchScrollHelpersToggleVisible(true);
                     showStatus('Error loading configuration: ' + error.message, 'error');
                 }
             }
@@ -1533,6 +1612,7 @@
                 hide_receiver: document.getElementById('hide_receiver').checked,
                 show_test_flight: document.getElementById('show_test_flight').checked,
                 enable_config_page: document.getElementById('enable_config_page').checked,
+                touch_scroll_helpers_enabled: document.getElementById('touch_scroll_helpers_enabled').checked,
                 flipoff_enabled: document.getElementById('flipoff_enabled').checked,
                 http_host: document.getElementById('http_host').value,
                 http_port: parseInt(document.getElementById('http_port').value),
@@ -1669,6 +1749,10 @@
         
         // Start initialization
         initConfig();
+        updateTouchScrollHelpersToggleUI();
+        updateTouchScrollHelpersVisibility();
+        window.addEventListener('scroll', updateTouchScrollHelpersVisibility, { passive: true });
+        window.addEventListener('resize', updateTouchScrollHelpersVisibility);
 
         const enableConfigToggle = document.getElementById('enable_config_page');
         if (enableConfigToggle) {
