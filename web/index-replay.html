@@ -697,8 +697,10 @@
             align-items: center;
             border-radius: 8px;
             border: 1px solid var(--border-color);
-            margin-bottom: 15px;
+            margin-bottom: 0;
             transition: background 0.3s ease;
+            height: 300px;
+            box-sizing: border-box;
         }
         
         .route-section {
@@ -761,7 +763,7 @@
         .flight-map-container {
             position: relative;
             flex: 1;
-            min-width: 400px;
+            min-width: 0;
             border-radius: 8px;
             overflow: hidden;
             border: 1px solid var(--border-color);
@@ -800,6 +802,96 @@
         .flight-map {
             width: 100%;
             height: 100%;
+        }
+
+        .altitude-chart-card {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-footer-bg);
+        }
+
+        .altitude-chart-title {
+            font-size: 0.85em;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .altitude-chart-layout {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+            min-height: 118px;
+        }
+
+        .altitude-chart-y {
+            width: 64px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 0.75em;
+            color: var(--text-primary);
+            text-align: right;
+            line-height: 1.2;
+            padding: 2px 0;
+            flex: 0 0 64px;
+        }
+
+        .altitude-chart-canvas {
+            display: block;
+            width: auto;
+            height: 118px;
+            border-radius: 6px;
+            background: rgba(61, 80, 102, 0.06);
+            border: 1px solid rgba(61, 80, 102, 0.12);
+        }
+
+        .altitude-chart-scroll {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 2px;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge legacy */
+        }
+
+        .altitude-chart-scroll::-webkit-scrollbar {
+            display: none; /* Chrome/Safari/Opera */
+        }
+
+        .altitude-chart-controls {
+            margin-top: 6px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .altitude-chart-nav-btn {
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border-radius: 6px;
+            width: 28px;
+            height: 24px;
+            font-size: 0.95em;
+            line-height: 1;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .altitude-chart-nav-btn:hover {
+            background: var(--selected-bg);
+        }
+
+        .altitude-chart-empty {
+            font-size: 0.82em;
+            color: var(--text-muted);
+            padding: 14px 6px;
+            text-align: center;
         }
         
         /* Overview map showing all flights */
@@ -1305,6 +1397,14 @@
             .flight-content-row {
                 flex-direction: column;
             }
+
+            .flight-content-row > .flight-details,
+            .flight-content-row > div:not(.flight-details) {
+                width: 100% !important;
+                min-width: 100% !important;
+                max-width: 100% !important;
+                flex: 1 1 100% !important;
+            }
             
             .flight-map-container {
                 min-width: 100%;
@@ -1491,6 +1591,8 @@
     <script>
         let flights = [];
         const flightMaps = {}; // Store flight maps
+        const flightPositionsCache = new Map();
+        const flightPositionsPending = new Map();
 
         const filterState = {
             aircraftType: { fixedWing: true, helicopter: true, unknown: true },
@@ -1506,6 +1608,7 @@
         let historyFilterDebounceTimer = null;
         let foundFlightsRefreshTimer = null;
         let foundFlightsRequestSeq = 0;
+        let altitudeChartResizeTimer = null;
         function scheduleHistoryFilters() {
             if (historyFilterDebounceTimer) {
                 clearTimeout(historyFilterDebounceTimer);
@@ -2863,6 +2966,12 @@
                                     <value>${flight.position_count.toLocaleString()}</value>
                                 </div>
                             ` : ''}
+                            ${flight.aircraft && (flight.aircraft.model || flight.aircraft.type || flight.aircraft.registration) ? `
+                                <div class="flight-detail-item">
+                                    <label>Aircraft</label>
+                                    <value>${flight.aircraft.model || flight.aircraft.type || 'Unknown'}${flight.aircraft.registration ? ` (${flight.aircraft.registration})` : ''}</value>
+                                </div>
+                            ` : ''}
                             <div class="flight-detail-item">
                                 <label>First Seen</label>
                                 <value>${formatDateTime(flight.first_seen)}</value>
@@ -2873,14 +2982,22 @@
                                     <value>${formatDateTime(flight.last_seen)}</value>
                                 </div>
                             ` : ''}
-                            ${flight.aircraft && (flight.aircraft.model || flight.aircraft.type || flight.aircraft.registration) ? `
-                                <div class="flight-detail-item">
-                                    <label>Aircraft</label>
-                                    <value>${flight.aircraft.model || flight.aircraft.type || 'Unknown'}${flight.aircraft.registration ? ` (${flight.aircraft.registration})` : ''}</value>
+                            <div class="altitude-chart-card">
+                                <div class="altitude-chart-title">Altitude Profile</div>
+                                <div class="altitude-chart-layout" id="altitude-chart-layout-${flightId}">
+                                    <div class="altitude-chart-y">
+                                        <span id="altitude-chart-y-max-${flightId}">--</span>
+                                        <span id="altitude-chart-y-mid-${flightId}">--</span>
+                                        <span id="altitude-chart-y-min-${flightId}">--</span>
+                                    </div>
+                                    <div class="altitude-chart-scroll" id="altitude-chart-scroll-${flightId}">
+                                        <canvas class="altitude-chart-canvas" id="altitude-chart-${flightId}" width="520" height="118"></canvas>
+                                    </div>
                                 </div>
-                            ` : ''}
-                            <div class="aircraft-photo-container" id="aircraft-photo-${flightId}">
-                                <div class="aircraft-photo-loading">Loading aircraft photo...</div>
+                                <div class="altitude-chart-controls">
+                                    <button type="button" class="altitude-chart-nav-btn" aria-label="Scroll altitude chart left" onclick="scrollAltitudeChart(${flightId}, -1)">&lt;</button>
+                                    <button type="button" class="altitude-chart-nav-btn" aria-label="Scroll altitude chart right" onclick="scrollAltitudeChart(${flightId}, 1)">&gt;</button>
+                                </div>
                             </div>
                         </div>
                         <div style="display: flex; flex-direction: column;">
@@ -2888,6 +3005,9 @@
                                 <button type="button" class="flight-map-replay-btn" id="flight-map-replay-${flightId}" onclick="replayFlightPathAnimation(${flightId})" title="Replay path animation" aria-label="Replay path animation">↻ Replay</button>
                                 <div class="map-loading" id="map-loading-${flightId}">Loading flight path...</div>
                                 <div class="flight-map" id="flight-map-${flightId}" style="display: none; width: 100%; height: 100%;"></div>
+                            </div>
+                            <div class="aircraft-photo-container" id="aircraft-photo-${flightId}" style="margin-top: 12px;">
+                                <div class="aircraft-photo-loading">Loading aircraft photo...</div>
                             </div>
                             ${flight.is_round_trip && flight.full_route_iata ? `
                             <div class="round-trip-info" style="margin-top: 15px; padding: 12px 16px; background: rgba(61, 80, 102, 0.1); border-radius: 8px; border: 1px solid rgba(61, 80, 102, 0.28);">
@@ -2929,9 +3049,12 @@
                     </table>
                 `;
                 
-                // Now load the map and photo
-                await loadFlightMap(flightId);
-                await loadAircraftPhoto(flight.aircraft_icao, flightId);
+                // Now load the map, chart, and photo in parallel.
+                await Promise.all([
+                    loadFlightMap(flightId),
+                    loadAltitudeChart(flightId),
+                    loadAircraftPhoto(flight.aircraft_icao, flightId)
+                ]);
                 
             } catch (error) {
                 console.error(`Error loading flight details for ${flightId}:`, error);
@@ -3221,22 +3344,7 @@
                 
             try {
                 console.log(`Loading map for flight ${flightId}...`);
-                // Fetch positions with longer timeout
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
-                
-                const response = await fetch(`/api/flights/${flightId}/positions`, {
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    loadingDiv.textContent = `Error: HTTP ${response.status}`;
-                    return;
-                }
-                
-                const data = await response.json();
-                const positions = data.positions || [];
+                const positions = await getFlightPositions(flightId, { timeoutMs: 20000 });
                 
                 if (positions.length === 0) {
                     loadingDiv.textContent = 'No position data available';
@@ -3426,13 +3534,7 @@
             tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">Loading positions...</td></tr>';
             
             try {
-                const response = await fetch(`/api/flights/${flightId}/positions`);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                
-                const data = await response.json();
-                const positions = data.positions || [];
+                const positions = await getFlightPositions(flightId, { timeoutMs: 20000 });
                 
                 if (positions.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">No position data available</td></tr>';
@@ -3458,6 +3560,169 @@
                 tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: var(--text-muted);">Error loading positions: ${error.message}</td></tr>`;
             }
         }
+
+        async function getFlightPositions(flightId, { timeoutMs = 20000, forceRefresh = false } = {}) {
+            const cacheKey = String(flightId);
+            if (!forceRefresh && flightPositionsCache.has(cacheKey)) {
+                return flightPositionsCache.get(cacheKey);
+            }
+            if (!forceRefresh && flightPositionsPending.has(cacheKey)) {
+                return flightPositionsPending.get(cacheKey);
+            }
+
+            const requestPromise = (async () => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                try {
+                    const response = await fetch(`/api/flights/${flightId}/positions`, { signal: controller.signal });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    const positions = Array.isArray(data.positions) ? data.positions : [];
+                    flightPositionsCache.set(cacheKey, positions);
+                    return positions;
+                } finally {
+                    clearTimeout(timeoutId);
+                    flightPositionsPending.delete(cacheKey);
+                }
+            })();
+
+            flightPositionsPending.set(cacheKey, requestPromise);
+            return requestPromise;
+        }
+
+        async function loadAltitudeChart(flightId) {
+            const canvas = document.getElementById(`altitude-chart-${flightId}`);
+            const layout = document.getElementById(`altitude-chart-layout-${flightId}`);
+            const scrollWrap = document.getElementById(`altitude-chart-scroll-${flightId}`);
+            if (!canvas || !layout || !scrollWrap) return;
+
+            try {
+                const positions = await getFlightPositions(flightId, { timeoutMs: 20000 });
+                const points = positions
+                    .map((p, idx) => ({ x: idx, y: p.altitude }))
+                    .filter((p) => p.y !== null && p.y !== undefined && !Number.isNaN(Number(p.y)));
+
+                if (points.length < 2) {
+                    layout.innerHTML = '<div class="altitude-chart-empty">Not enough altitude data for chart</div>';
+                    return;
+                }
+
+                const yVals = points.map((p) => Number(p.y));
+                const minY = Math.min(...yVals);
+                const maxY = Math.max(...yVals);
+                const spanY = Math.max(1, maxY - minY);
+                const paddedMin = Math.max(0, minY - spanY * 0.08);
+                const paddedMax = maxY + spanY * 0.08;
+                const midY = (paddedMax + paddedMin) / 2;
+
+                const yMaxEl = document.getElementById(`altitude-chart-y-max-${flightId}`);
+                const yMidEl = document.getElementById(`altitude-chart-y-mid-${flightId}`);
+                const yMinEl = document.getElementById(`altitude-chart-y-min-${flightId}`);
+                if (yMaxEl) yMaxEl.textContent = `${Math.round(paddedMax).toLocaleString()} ft`;
+                if (yMidEl) yMidEl.textContent = `${Math.round(midY).toLocaleString()} ft`;
+                if (yMinEl) yMinEl.textContent = `${Math.round(paddedMin).toLocaleString()} ft`;
+
+                const dpr = window.devicePixelRatio || 1;
+                const visibleWidth = Math.max(260, scrollWrap.clientWidth || 520);
+                const preferredDataWidth = Math.max(520, points.length * 3.2);
+                const displayWidth = Math.max(visibleWidth, Math.min(2400, preferredDataWidth));
+                const displayHeight = Math.max(118, canvas.clientHeight || 118);
+                canvas.style.width = `${displayWidth}px`;
+                canvas.width = Math.round(displayWidth * dpr);
+                canvas.height = Math.round(displayHeight * dpr);
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+                const styles = getComputedStyle(document.documentElement);
+                const axisColor = styles.getPropertyValue('--border-color').trim() || '#9fb0bc';
+                const lineColor = styles.getPropertyValue('--route-color').trim() || '#3e91be';
+                const fillColor = styles.getPropertyValue('--selected-bg').trim() || 'rgba(61, 80, 102, 0.15)';
+
+                const pad = { left: 8, right: 8, top: 8, bottom: 10 };
+                const w = displayWidth - pad.left - pad.right;
+                const h = displayHeight - pad.top - pad.bottom;
+                const maxX = points.length - 1;
+
+                const mapX = (x) => pad.left + (maxX === 0 ? 0 : (x / maxX) * w);
+                const mapY = (y) => pad.top + ((paddedMax - y) / (paddedMax - paddedMin)) * h;
+
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = axisColor;
+                ctx.globalAlpha = 0.6;
+                [0, 0.5, 1].forEach((ratio) => {
+                    const y = pad.top + ratio * h;
+                    ctx.beginPath();
+                    ctx.moveTo(pad.left, y);
+                    ctx.lineTo(displayWidth - pad.right, y);
+                    ctx.stroke();
+                });
+                ctx.globalAlpha = 1;
+
+                ctx.beginPath();
+                points.forEach((pt, idx) => {
+                    const x = mapX(pt.x);
+                    const y = mapY(Number(pt.y));
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+
+                // Fill under line
+                const firstX = mapX(points[0].x);
+                const lastX = mapX(points[points.length - 1].x);
+                const baseY = pad.top + h;
+                ctx.lineTo(lastX, baseY);
+                ctx.lineTo(firstX, baseY);
+                ctx.closePath();
+                ctx.fillStyle = fillColor;
+                ctx.globalAlpha = 0.55;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Redraw stroke crisply on top
+                ctx.beginPath();
+                points.forEach((pt, idx) => {
+                    const x = mapX(pt.x);
+                    const y = mapY(Number(pt.y));
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } catch (error) {
+                console.error(`Error loading altitude chart for flight ${flightId}:`, error);
+                layout.innerHTML = `<div class="altitude-chart-empty">Altitude chart unavailable (${error.message})</div>`;
+            }
+        }
+
+        function scrollAltitudeChart(flightId, direction) {
+            const scrollWrap = document.getElementById(`altitude-chart-scroll-${flightId}`);
+            if (!scrollWrap) return;
+            const step = Math.max(140, Math.round(scrollWrap.clientWidth * 0.65));
+            scrollWrap.scrollBy({ left: step * direction, behavior: 'smooth' });
+        }
+
+        function scheduleAltitudeChartsResizeRedraw() {
+            if (altitudeChartResizeTimer) {
+                clearTimeout(altitudeChartResizeTimer);
+            }
+            altitudeChartResizeTimer = setTimeout(() => {
+                altitudeChartResizeTimer = null;
+                const canvases = document.querySelectorAll('canvas[id^="altitude-chart-"]');
+                canvases.forEach((canvas) => {
+                    const idPart = canvas.id.replace('altitude-chart-', '');
+                    const flightId = Number(idPart);
+                    if (Number.isFinite(flightId)) {
+                        loadAltitudeChart(flightId);
+                    }
+                });
+            }, 120);
+        }
+
+        window.addEventListener('resize', scheduleAltitudeChartsResizeRedraw);
         
         // Format date/time
         function formatDateTime(isoString) {
