@@ -1074,6 +1074,10 @@ def process_aircraft_data(aircraft_data):
                                 flight_memory[icao]['destination'] = route_info.get('destination')
                                 flight_memory[icao]['origin_country'] = route_info.get('origin_country')
                                 flight_memory[icao]['destination_country'] = route_info.get('destination_country')
+                                flight_memory[icao]['origin_city'] = route_info.get('origin_city')
+                                flight_memory[icao]['destination_city'] = route_info.get('destination_city')
+                                flight_memory[icao]['origin_airport_name'] = route_info.get('origin_airport_name')
+                                flight_memory[icao]['destination_airport_name'] = route_info.get('destination_airport_name')
                                 flight_memory[icao]['source'] = route_info.get('source', 'unknown')
                                 flight_memory[icao]['full_route'] = route_info.get('full_route')
                                 flight_memory[icao]['full_route_iata'] = route_info.get('full_route_iata')
@@ -1202,6 +1206,10 @@ def process_aircraft_data(aircraft_data):
                             flight_memory[icao]['destination'] = route_info.get('destination')
                             flight_memory[icao]['origin_country'] = route_info.get('origin_country')
                             flight_memory[icao]['destination_country'] = route_info.get('destination_country')
+                            flight_memory[icao]['origin_city'] = route_info.get('origin_city')
+                            flight_memory[icao]['destination_city'] = route_info.get('destination_city')
+                            flight_memory[icao]['origin_airport_name'] = route_info.get('origin_airport_name')
+                            flight_memory[icao]['destination_airport_name'] = route_info.get('destination_airport_name')
                             flight_memory[icao]['source'] = route_info.get('source', 'unknown')
                             flight_memory[icao]['full_route'] = route_info.get('full_route')
                             flight_memory[icao]['full_route_iata'] = route_info.get('full_route_iata')
@@ -1350,6 +1358,10 @@ def process_aircraft_data(aircraft_data):
                             'destination': enriched.get('destination'),
                             'origin_country': enriched.get('origin_country'),
                             'destination_country': enriched.get('destination_country'),
+                            'origin_city': enriched.get('origin_city'),
+                            'destination_city': enriched.get('destination_city'),
+                            'origin_airport_name': enriched.get('origin_airport_name'),
+                            'destination_airport_name': enriched.get('destination_airport_name'),
                             'airline_code': enriched.get('airline_code'),
                             'airline_name': enriched.get('airline_name'),
                             'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
@@ -1390,6 +1402,10 @@ def process_aircraft_data(aircraft_data):
                             'destination': enriched.get('destination'),
                             'origin_country': enriched.get('origin_country'),
                             'destination_country': enriched.get('destination_country'),
+                            'origin_city': enriched.get('origin_city'),
+                            'destination_city': enriched.get('destination_city'),
+                            'origin_airport_name': enriched.get('origin_airport_name'),
+                            'destination_airport_name': enriched.get('destination_airport_name'),
                             'airline_code': enriched.get('airline_code'),
                             'airline_name': enriched.get('airline_name'),
                             'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
@@ -1416,6 +1432,10 @@ def process_aircraft_data(aircraft_data):
                             flight_info['destination'] = mem.get('destination')
                             flight_info['origin_country'] = mem.get('origin_country')
                             flight_info['destination_country'] = mem.get('destination_country')
+                            flight_info['origin_city'] = mem.get('origin_city')
+                            flight_info['destination_city'] = mem.get('destination_city')
+                            flight_info['origin_airport_name'] = mem.get('origin_airport_name')
+                            flight_info['destination_airport_name'] = mem.get('destination_airport_name')
                             flight_info['airline_code'] = mem.get('airline_code')
                             flight_info['airline_name'] = mem.get('airline_name')
                             flight_info['full_route'] = mem.get('full_route')
@@ -1432,6 +1452,14 @@ def process_aircraft_data(aircraft_data):
                                 flight_info['origin_country'] = enriched.get('origin_country')
                             if not flight_info.get('destination_country'):
                                 flight_info['destination_country'] = enriched.get('destination_country')
+                            if not flight_info.get('origin_city'):
+                                flight_info['origin_city'] = enriched.get('origin_city')
+                            if not flight_info.get('destination_city'):
+                                flight_info['destination_city'] = enriched.get('destination_city')
+                            if not flight_info.get('origin_airport_name'):
+                                flight_info['origin_airport_name'] = enriched.get('origin_airport_name')
+                            if not flight_info.get('destination_airport_name'):
+                                flight_info['destination_airport_name'] = enriched.get('destination_airport_name')
                             if not flight_info.get('airline_code'):
                                 flight_info['airline_code'] = enriched.get('airline_code')
                             if not flight_info.get('airline_name'):
@@ -2554,6 +2582,10 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     'destination': flight.get('destination'),
                     'origin_country': flight.get('origin_country'),
                     'destination_country': flight.get('destination_country'),
+                    'origin_city': flight.get('origin_city'),
+                    'destination_city': flight.get('destination_city'),
+                    'origin_airport_name': flight.get('origin_airport_name'),
+                    'destination_airport_name': flight.get('destination_airport_name'),
                     'airline_code': flight.get('airline_code'),
                     'airline_name': flight.get('airline_name'),
                     'first_seen': flight.get('first_seen'),
@@ -2659,6 +2691,10 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'destination': flight.get('destination'),
                         'origin_country': flight.get('origin_country'),
                         'destination_country': flight.get('destination_country'),
+                        'origin_city': flight.get('origin_city'),
+                        'destination_city': flight.get('destination_city'),
+                        'origin_airport_name': flight.get('origin_airport_name'),
+                        'destination_airport_name': flight.get('destination_airport_name'),
                         'airline_code': airline_code,
                         'airline_name': flight.get('airline_name'),
                         'airline_logo': airline_logo,

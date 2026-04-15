@@ -574,6 +574,22 @@ class FlightDatabase:
         except sqlite3.OperationalError:
             pass  # Column already exists
         try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN origin_city TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN destination_city TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN origin_airport_name TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN destination_airport_name TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        try:
             cursor.execute('ALTER TABLE aircraft ADD COLUMN is_helicopter INTEGER')
         except sqlite3.OperationalError:
             pass  # Column already exists
@@ -919,8 +935,10 @@ class FlightDatabase:
                     origin_country, destination_country,
                     airline_code, airline_name,
                     {self.first_seen_col}, status,
-                    full_route, full_route_iata, is_round_trip
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    full_route, full_route_iata, is_round_trip,
+                    origin_city, destination_city,
+                    origin_airport_name, destination_airport_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 icao,
                 callsign,
@@ -934,7 +952,11 @@ class FlightDatabase:
                 'airborne',
                 info.get('full_route'),
                 info.get('full_route_iata'),
-                1 if info.get('is_round_trip') else 0
+                1 if info.get('is_round_trip') else 0,
+                info.get('origin_city'),
+                info.get('destination_city'),
+                info.get('origin_airport_name'),
+                info.get('destination_airport_name')
             ))
             
             flight_id = cursor.lastrowid
@@ -991,7 +1013,11 @@ class FlightDatabase:
                     airline_name = COALESCE(?, airline_name),
                     full_route = COALESCE(?, full_route),
                     full_route_iata = COALESCE(?, full_route_iata),
-                    is_round_trip = COALESCE(?, is_round_trip)
+                    is_round_trip = COALESCE(?, is_round_trip),
+                    origin_city = COALESCE(?, origin_city),
+                    destination_city = COALESCE(?, destination_city),
+                    origin_airport_name = COALESCE(?, origin_airport_name),
+                    destination_airport_name = COALESCE(?, destination_airport_name)
                 WHERE id = ?
             ''', (
                 flight_info.get('origin'),
@@ -1003,11 +1029,102 @@ class FlightDatabase:
                 flight_info.get('full_route'),
                 flight_info.get('full_route_iata'),
                 1 if flight_info.get('is_round_trip') else 0,
+                flight_info.get('origin_city'),
+                flight_info.get('destination_city'),
+                flight_info.get('origin_airport_name'),
+                flight_info.get('destination_airport_name'),
                 flight_id
             ))
             
             conn.commit()
             conn.close()
+
+    def backfill_flight_airport_enrichment(self):
+        """
+        Populate/normalize flights origin/destination country + city + airport name
+        from OpenFlights cache using route codes.
+        """
+        from flight_info import load_openflights_airports
+        airports = load_openflights_airports()
+
+        def _lookup(code):
+            if not code:
+                return None
+            s = str(code).strip().upper()
+            if not s:
+                return None
+            info = airports.get(s)
+            return info if isinstance(info, dict) else None
+
+        stats = {'rows': 0, 'updated': 0}
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                SELECT id, origin, destination, origin_country, destination_country,
+                       origin_city, destination_city, origin_airport_name, destination_airport_name
+                FROM flights
+                '''
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                stats['rows'] += 1
+                origin_info = _lookup(row['origin'])
+                dest_info = _lookup(row['destination'])
+
+                new_origin_country = row['origin_country']
+                new_origin_city = row['origin_city']
+                new_origin_airport_name = row['origin_airport_name']
+                if origin_info:
+                    new_origin_country = origin_info.get('country') or new_origin_country
+                    new_origin_city = origin_info.get('city') or new_origin_city
+                    new_origin_airport_name = origin_info.get('name') or new_origin_airport_name
+
+                new_destination_country = row['destination_country']
+                new_destination_city = row['destination_city']
+                new_destination_airport_name = row['destination_airport_name']
+                if dest_info:
+                    new_destination_country = dest_info.get('country') or new_destination_country
+                    new_destination_city = dest_info.get('city') or new_destination_city
+                    new_destination_airport_name = dest_info.get('name') or new_destination_airport_name
+
+                changed = (
+                    new_origin_country != row['origin_country'] or
+                    new_destination_country != row['destination_country'] or
+                    new_origin_city != row['origin_city'] or
+                    new_destination_city != row['destination_city'] or
+                    new_origin_airport_name != row['origin_airport_name'] or
+                    new_destination_airport_name != row['destination_airport_name']
+                )
+                if changed:
+                    cursor.execute(
+                        '''
+                        UPDATE flights
+                        SET origin_country = ?,
+                            destination_country = ?,
+                            origin_city = ?,
+                            destination_city = ?,
+                            origin_airport_name = ?,
+                            destination_airport_name = ?
+                        WHERE id = ?
+                        ''',
+                        (
+                            new_origin_country,
+                            new_destination_country,
+                            new_origin_city,
+                            new_destination_city,
+                            new_origin_airport_name,
+                            new_destination_airport_name,
+                            row['id']
+                        )
+                    )
+                    stats['updated'] += 1
+
+            conn.commit()
+            conn.close()
+        return stats
     
     def update_flight_callsign(self, flight_id, callsign):
         """

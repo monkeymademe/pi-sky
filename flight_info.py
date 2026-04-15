@@ -326,6 +326,86 @@ def get_airport_country(airport_code):
     
     return None
 
+def get_airport_info(airport_code):
+    """
+    Get airport metadata for IATA/ICAO from OpenFlights cache.
+
+    Args:
+        airport_code: IATA or ICAO code (e.g., 'BER', 'EDDB')
+
+    Returns:
+        dict|None: {'country', 'name', 'city', 'lat', 'lon'} or None
+    """
+    if not airport_code:
+        return None
+
+    airport_code = str(airport_code).strip().upper()
+    if not airport_code:
+        return None
+
+    try:
+        airports = load_openflights_airports()
+        info = airports.get(airport_code)
+        if isinstance(info, dict):
+            return info
+    except Exception:
+        pass
+
+    return None
+
+def _best_airport_info(iata_code=None, icao_code=None):
+    """
+    Resolve airport info preferring IATA first, then ICAO.
+    Returns (info_dict_or_none, matched_code_or_none).
+    """
+    if iata_code:
+        info = get_airport_info(iata_code)
+        if info:
+            return info, str(iata_code).strip().upper()
+    if icao_code:
+        info = get_airport_info(icao_code)
+        if info:
+            return info, str(icao_code).strip().upper()
+    return None, None
+
+def enrich_route_info_from_openflights(route_info, origin_iata=None, origin_icao=None, destination_iata=None, destination_icao=None):
+    """
+    Final route enrichment pass: normalize country to full OpenFlights country
+    names and attach optional airport name/city metadata.
+
+    This runs at the end of route resolution so DB/API writes use canonical values.
+    """
+    if not isinstance(route_info, dict):
+        return route_info
+
+    out = dict(route_info)
+    origin_info, origin_match_code = _best_airport_info(origin_iata, origin_icao)
+    dest_info, dest_match_code = _best_airport_info(destination_iata, destination_icao)
+
+    if origin_info:
+        country = origin_info.get('country')
+        if country:
+            out['origin_country'] = country
+        if origin_info.get('name'):
+            out['origin_airport_name'] = origin_info.get('name')
+        if origin_info.get('city'):
+            out['origin_city'] = origin_info.get('city')
+        if origin_match_code:
+            out['origin_lookup_code'] = origin_match_code
+
+    if dest_info:
+        country = dest_info.get('country')
+        if country:
+            out['destination_country'] = country
+        if dest_info.get('name'):
+            out['destination_airport_name'] = dest_info.get('name')
+        if dest_info.get('city'):
+            out['destination_city'] = dest_info.get('city')
+        if dest_match_code:
+            out['destination_lookup_code'] = dest_match_code
+
+    return out
+
 def get_airport_coordinates(airport_code):
     """
     Get latitude and longitude for an airport code from OpenFlights database
@@ -880,6 +960,15 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None, position_h
                             result['is_round_trip'] = True
                             result['full_route'] = airport_codes  # e.g., "CGN-BER-CGN" or "EDDK-EDDB-EDDK"
                             result['full_route_iata'] = route.get('_airport_codes_iata', '')  # e.g., "CGN-BER-CGN"
+
+                        # Final enrichment step: normalize country/name/city from OpenFlights cache.
+                        result = enrich_route_info_from_openflights(
+                            result,
+                            origin_iata=origin_iata,
+                            origin_icao=origin_icao,
+                            destination_iata=destination_iata,
+                            destination_icao=destination_icao
+                        )
                         
                         print(f"[{timestamp}] API SUCCESS: Route found for {callsign.strip()}: {origin} → {destination}")
                         if is_round_trip:
