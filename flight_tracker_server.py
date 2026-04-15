@@ -342,6 +342,8 @@ def validate_config(config):
         return 'websocket_port must be an integer'
     if 'enable_config_page' in config and not isinstance(config.get('enable_config_page'), bool):
         return 'enable_config_page must be a boolean'
+    if 'flipoff_enabled' in config and not isinstance(config.get('flipoff_enabled'), bool):
+        return 'flipoff_enabled must be a boolean'
     
     # Validate ranges
     if not (-90 <= config.get('receiver_lat', 0) <= 90):
@@ -415,6 +417,8 @@ def load_config():
                 config['inky']['enabled'] = False
             if 'enable_config_page' not in config:
                 config['enable_config_page'] = True
+            if 'flipoff_enabled' not in config:
+                config['flipoff_enabled'] = True
             if 'mictronics_aircraft_db' not in config or not isinstance(config.get('mictronics_aircraft_db'), dict):
                 config['mictronics_aircraft_db'] = {}
             if 'enabled' not in config['mictronics_aircraft_db']:
