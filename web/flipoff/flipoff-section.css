@@ -6,6 +6,10 @@
   padding: 16px 20px 20px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   transition: background 0.3s ease;
+  /* Touch screens: prefer page scrolling over text selection. */
+  touch-action: pan-y pinch-zoom;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .flipoff-section-header {
@@ -52,6 +56,14 @@
 .flipoff-board-wrap {
   width: 100%;
   overflow: hidden;
+  touch-action: pan-y pinch-zoom;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.flipoff-board-wrap * {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Hide FlipOff keyboard overlay on embedded board */
