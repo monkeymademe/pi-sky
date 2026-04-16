@@ -626,11 +626,77 @@
             max-width: 100%;
         }
 
+        .credits-section .section-header {
+            cursor: default;
+        }
+
+        .credits-section .section-header::after {
+            content: '';
+        }
+
         .credits-intro {
             font-size: 0.95em;
             color: var(--text-secondary);
             margin-bottom: 16px;
             line-height: 1.5;
+        }
+
+        .credits-builder {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--selected-bg);
+        }
+
+        .credits-builder-logo {
+            background: #000;
+            border-radius: 10px;
+            padding: 8px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .credits-builder-logo img {
+            height: 34px;
+            width: auto;
+            max-width: 220px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .credits-builder-text {
+            color: var(--text-secondary);
+            font-size: 0.95em;
+            line-height: 1.45;
+        }
+
+        .credits-builder-text strong {
+            color: var(--text-primary);
+        }
+
+        .credits-builder-text a {
+            color: var(--accent-color);
+        }
+
+        .credits-columns {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 22px;
+        }
+
+        .credits-column-title {
+            font-size: 1em;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0 0 8px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .credits-list {
@@ -670,6 +736,12 @@
             color: var(--text-muted);
             font-size: 0.9em;
             margin-top: 4px;
+        }
+
+        @media (max-width: 900px) {
+            .credits-columns {
+                grid-template-columns: 1fr;
+            }
         }
 
         .mictronics-import-badge {
@@ -752,7 +824,6 @@
         </div>
 
         <div class="config-main" id="configMain">
-            <p class="config-intro">Manage your Pi-Sky receiver and server settings.</p>
             <div id="configFeedback" class="config-feedback"></div>
 
             <form id="configForm">
@@ -814,10 +885,10 @@
 
                 <!-- Server Settings -->
                 <div class="section">
-                    <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-header collapsed" onclick="toggleSection(this)">
                         Server Settings
                     </div>
-                    <div class="section-content">
+                    <div class="section-content collapsed">
                         <div class="form-group full-width">
                             <label for="dump1090_url">dump1090 URL</label>
                             <input type="url" id="dump1090_url" name="dump1090_url" required>
@@ -882,10 +953,10 @@
 
                 <!-- E-ink Map Generation -->
                 <div class="section">
-                    <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-header collapsed" onclick="toggleSection(this)">
                         Inky e-paper display
                     </div>
-                    <div class="section-content">
+                    <div class="section-content collapsed">
                         <div class="form-group full-width">
                             <div class="toggle-group">
                                 <div class="toggle-item">
@@ -941,10 +1012,10 @@
 
                 <!-- Database -->
                 <div class="section">
-                    <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-header collapsed" onclick="toggleSection(this)">
                         Database Settings
                     </div>
-                    <div class="section-content">
+                    <div class="section-content collapsed">
                         <!-- Enable Database Toggle (Left Aligned) -->
                         <div class="form-group full-width">
                             <div class="toggle-group">
@@ -981,10 +1052,10 @@
 
                 <!-- Mictronics Aircraft Reference -->
                 <div class="section">
-                    <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-header collapsed" onclick="toggleSection(this)">
                         Mictronics Aircraft Reference
                     </div>
-                    <div class="section-content">
+                    <div class="section-content collapsed">
                         <div class="form-group full-width">
                             <div class="toggle-group">
                                 <div class="toggle-item">
@@ -1022,67 +1093,87 @@
 
                 <!-- Credits -->
                 <div class="section credits-section">
-                    <div class="section-header" onclick="toggleSection(this)">
+                    <div class="section-header">
                         Credits
                     </div>
                     <div class="section-content">
+                        <div class="credits-builder">
+                            <a class="credits-builder-logo" href="https://bytingidea.com/" target="_blank" rel="noopener noreferrer" aria-label="Visit Bytingidea">
+                                <img src="https://bytingidea.com/content/images/2025/03/bytingidea-3.png" alt="Bytingidea logo" loading="lazy" decoding="async">
+                            </a>
+                            <div class="credits-builder-text">
+                                <strong>Built by James Mitchell</strong><br>
+                                Pi-Sky is designed and developed by <a href="https://bytingidea.com/" target="_blank" rel="noopener noreferrer">Bytingidea</a>.
+                                Source code: <a href="https://github.com/monkeymademe/pi-sky" target="_blank" rel="noopener noreferrer">GitHub</a>.
+                            </div>
+                        </div>
                         <p class="credits-intro">
                             Third-party data services, datasets, and software used by Pi-Sky. Thank you to the authors and providers.
                         </p>
-                        <ul class="credits-list">
-                            <li>
-                                <strong>adsb.lol</strong>
-                                <span class="credit-desc">ADS-B API: flight routes (routeset), live aircraft positions, and aircraft metadata (type, description, registration) by ICAO hex.</span>
-                                <a href="https://api.adsb.lol/docs" target="_blank" rel="noopener noreferrer">https://api.adsb.lol/docs</a>
-                            </li>
-                            <li>
-                                <strong>OpenFlights</strong>
-                                <span class="credit-desc">Airport and airline reference data (cached locally as <code>airports.dat</code> / <code>airlines.dat</code>) for coordinates, countries, and airline names.</span>
-                                <a href="https://openflights.org/data.html" target="_blank" rel="noopener noreferrer">https://openflights.org/data.html</a>
-                            </li>
-                            <li>
-                                <strong>Mictronics Aircraft Database</strong>
-                                <span class="credit-desc">Optional local aircraft registration / ICAO type / model strings from user-uploaded dump1090-style exports.</span>
-                                <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">https://www.mictronics.de/aircraft-database/#</a>
-                            </li>
-                            <li>
-                                <strong>OpenStreetMap &amp; Nominatim</strong>
-                                <span class="credit-desc">Map tiles and reverse geocoding (place names from coordinates). OpenStreetMap data is © OpenStreetMap contributors.</span>
-                                <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">https://www.openstreetmap.org/copyright</a>
-                            </li>
-                            <li>
-                                <strong>Wikimedia Commons API</strong>
-                                <span class="credit-desc">Search API used to find aircraft photos by registration where applicable.</span>
-                                <a href="https://commons.wikimedia.org/wiki/Commons:API" target="_blank" rel="noopener noreferrer">https://commons.wikimedia.org/wiki/Commons:API</a>
-                            </li>
-                            <li>
-                                <strong>Google Favicons</strong>
-                                <span class="credit-desc">Favicon lookup for airline logo icons derived from carrier domains (where available).</span>
-                                <a href="https://www.google.com/s2/favicons" target="_blank" rel="noopener noreferrer">Google favicon service</a>
-                            </li>
-                            <li>
-                                <strong>PlaneSpotters.net (replay UI)</strong>
-                                <span class="credit-desc">Optional aircraft photo lookup in the replay map view.</span>
-                                <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">https://www.planespotters.net</a>
-                            </li>
-                            <li>
-                                <strong>Leaflet &amp; Anime.js</strong>
-                                <span class="credit-desc">Interactive maps (Leaflet) and UI animation (Anime.js, via CDN) on map and list views.</span>
-                                <a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>
-                                ·
-                                <a href="https://animejs.com" target="_blank" rel="noopener noreferrer">Anime.js</a>
-                            </li>
-                            <li>
-                                <strong>Bootstrap Icons</strong>
-                                <span class="credit-desc">UI icon assets used in the map tooltip actions (including the ticket detailed icon).</span>
-                                <a href="https://icons.getbootstrap.com" target="_blank" rel="noopener noreferrer">https://icons.getbootstrap.com</a>
-                            </li>
-                            <li>
-                                <strong>FlipOff</strong>
-                                <span class="credit-desc">Split-flap display UI on the flight list (card view).</span>
-                                <a href="https://github.com/magnum6actual/flipoff" target="_blank" rel="noopener noreferrer">https://github.com/magnum6actual/flipoff</a>
-                            </li>
-                        </ul>
+                        <div class="credits-columns">
+                            <div>
+                                <h3 class="credits-column-title">Data Sources</h3>
+                                <ul class="credits-list">
+                                    <li>
+                                        <strong>adsb.lol</strong>
+                                        <span class="credit-desc">ADS-B API: flight routes (routeset), live aircraft positions, and aircraft metadata (type, description, registration) by ICAO hex.</span>
+                                        <a href="https://api.adsb.lol/docs" target="_blank" rel="noopener noreferrer">https://api.adsb.lol/docs</a>
+                                    </li>
+                                    <li>
+                                        <strong>OpenFlights</strong>
+                                        <span class="credit-desc">Airport and airline reference data (cached locally as <code>airports.dat</code> / <code>airlines.dat</code>) for coordinates, countries, and airline names.</span>
+                                        <a href="https://openflights.org/data.html" target="_blank" rel="noopener noreferrer">https://openflights.org/data.html</a>
+                                    </li>
+                                    <li>
+                                        <strong>Mictronics Aircraft Database</strong>
+                                        <span class="credit-desc">Optional local aircraft registration / ICAO type / model strings from user-uploaded dump1090-style exports.</span>
+                                        <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">https://www.mictronics.de/aircraft-database/#</a>
+                                    </li>
+                                    <li>
+                                        <strong>OpenStreetMap &amp; Nominatim</strong>
+                                        <span class="credit-desc">Map tiles and reverse geocoding (place names from coordinates). OpenStreetMap data is © OpenStreetMap contributors.</span>
+                                        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">https://www.openstreetmap.org/copyright</a>
+                                    </li>
+                                    <li>
+                                        <strong>Wikimedia Commons API</strong>
+                                        <span class="credit-desc">Search API used to find aircraft photos by registration where applicable.</span>
+                                        <a href="https://commons.wikimedia.org/wiki/Commons:API" target="_blank" rel="noopener noreferrer">https://commons.wikimedia.org/wiki/Commons:API</a>
+                                    </li>
+                                    <li>
+                                        <strong>Google Favicons</strong>
+                                        <span class="credit-desc">Favicon lookup for airline logo icons derived from carrier domains (where available).</span>
+                                        <a href="https://www.google.com/s2/favicons" target="_blank" rel="noopener noreferrer">Google favicon service</a>
+                                    </li>
+                                    <li>
+                                        <strong>PlaneSpotters.net (replay UI)</strong>
+                                        <span class="credit-desc">Optional aircraft photo lookup in the replay map view.</span>
+                                        <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">https://www.planespotters.net</a>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h3 class="credits-column-title">Design</h3>
+                                <ul class="credits-list">
+                                    <li>
+                                        <strong>Leaflet &amp; Anime.js</strong>
+                                        <span class="credit-desc">Interactive maps (Leaflet) and UI animation (Anime.js, via CDN) on map and list views.</span>
+                                        <a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>
+                                        ·
+                                        <a href="https://animejs.com" target="_blank" rel="noopener noreferrer">Anime.js</a>
+                                    </li>
+                                    <li>
+                                        <strong>Bootstrap Icons</strong>
+                                        <span class="credit-desc">UI icon assets used in the map tooltip actions (including the ticket detailed icon).</span>
+                                        <a href="https://icons.getbootstrap.com" target="_blank" rel="noopener noreferrer">https://icons.getbootstrap.com</a>
+                                    </li>
+                                    <li>
+                                        <strong>FlipOff</strong>
+                                        <span class="credit-desc">Split-flap display UI on the flight list (card view).</span>
+                                        <a href="https://github.com/magnum6actual/flipoff" target="_blank" rel="noopener noreferrer">https://github.com/magnum6actual/flipoff</a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
