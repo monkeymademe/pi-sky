@@ -13,6 +13,11 @@ if [ -f "$CONFIG_FILE" ]; then
     if [ -z "$HTTP_PORT" ]; then
         HTTP_PORT="5050"
     fi
+
+    # 0.0.0.0 is a bind-all address, not a good browser target.
+    if [ "$HTTP_HOST" = "0.0.0.0" ] || [ "$HTTP_HOST" = "::" ]; then
+        HTTP_HOST="localhost"
+    fi
 else
     HTTP_HOST="localhost"
     HTTP_PORT="5050"
