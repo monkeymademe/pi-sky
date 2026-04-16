@@ -932,13 +932,6 @@
                                     </label>
                                 </div>
                                 <div class="toggle-item">
-                                    <label for="touch_scroll_helpers_enabled">Show scroll-helper toggle in nav bar</label>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" id="touch_scroll_helpers_enabled" name="touch_scroll_helpers_enabled">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div class="toggle-item">
                                     <label for="flipoff_enabled">Enable FlipOff section</label>
                                     <label class="toggle-switch">
                                         <input type="checkbox" id="flipoff_enabled" name="flipoff_enabled">
@@ -947,6 +940,75 @@
                                 </div>
                             </div>
                             <span class="help-text">Warning: disabling this hides and blocks config.html. The only way to restore access is editing config.json directly and setting enable_config_page to true.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Scroll Helpers -->
+                <div class="section">
+                    <div class="section-header collapsed" onclick="toggleSection(this)">
+                        Scroll Helpers
+                    </div>
+                    <div class="section-content collapsed">
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="touch_scroll_helpers_enabled">Show scroll-helper toggle in nav bar</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="touch_scroll_helpers_enabled" name="touch_scroll_helpers_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="coord-row">
+                            <div class="form-group">
+                                    <label for="touch_scroll_helpers_height_px">Button Height (px)</label>
+                                    <input type="number" id="touch_scroll_helpers_height_px" name="touch_scroll_helpers_height_px" min="24" max="200" step="1">
+                                    <span class="help-text">Controls button height + font size</span>
+                            </div>
+                                <div class="form-group">
+                                    <label for="touch_scroll_helpers_width_px">Button Width (px)</label>
+                                    <input type="number" id="touch_scroll_helpers_width_px" name="touch_scroll_helpers_width_px" min="10" max="800" step="1">
+                                    <span class="help-text">Horizontal button size (e.g. 30px)</span>
+                            </div>
+                        </div>
+
+                            <div class="form-group full-width">
+                                <label for="touch_scroll_helpers_opacity">Button Opacity</label>
+                                <input type="number" id="touch_scroll_helpers_opacity" name="touch_scroll_helpers_opacity" min="0" max="1" step="0.01">
+                                <span class="help-text">0.00 (transparent) - 1.00 (opaque)</span>
+                            </div>
+
+                        <div class="form-group full-width">
+                            <label for="touch_scroll_helpers_color">Button Color (hex)</label>
+                            <input type="text" id="touch_scroll_helpers_color" name="touch_scroll_helpers_color" maxlength="7" placeholder="#1a2634" style="text-transform: lowercase;">
+                            <span class="help-text">Use a HTML hex color like <code>#3d5066</code></span>
+                        </div>
+
+                        <div class="coord-row">
+                            <div class="form-group">
+                                <label for="touch_scroll_helpers_auto_hide_enabled">Auto-hide Enable</label>
+                                <div class="toggle-group" style="margin-top: 4px;">
+                                    <div class="toggle-item">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="touch_scroll_helpers_auto_hide_enabled" name="touch_scroll_helpers_auto_hide_enabled">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <span class="help-text">When off, buttons stay visible while enabled</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="touch_scroll_helpers_button_alignment">Button Alignment</label>
+                                <select id="touch_scroll_helpers_button_alignment" name="touch_scroll_helpers_button_alignment" style="padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--card-bg); color: var(--text-primary);">
+                                    <option value="left">Left</option>
+                                    <option value="center" selected>Center</option>
+                                    <option value="right">Right</option>
+                                </select>
+                                <span class="help-text">Where the buttons appear horizontally</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1285,6 +1347,65 @@
 
         let touchScrollHelpersEnabled = localStorage.getItem('touchScrollHelpersEnabled') !== 'false';
         let touchScrollHelpersToggleVisible = true;
+        let touchScrollHelpersAutoHideEnabled = true;
+
+        function hexToRgb(hex) {
+            const raw = (hex || '').trim();
+            const m = raw.match(/^#([0-9a-fA-F]{6})$/);
+            if (!m) return { r: 26, g: 38, b: 52 }; // default #1a2634
+            const n = parseInt(m[1], 16);
+            return {
+                r: (n >> 16) & 255,
+                g: (n >> 8) & 255,
+                b: n & 255
+            };
+        }
+
+        function applyTouchScrollHelpersStyle(config) {
+            const heightPx = Number(config?.touch_scroll_helpers_height_px ?? config?.touch_scroll_helpers_size_px ?? 44);
+            const opacity = Number(config?.touch_scroll_helpers_opacity ?? 0.62);
+            const colorHex = config?.touch_scroll_helpers_color ?? '#1a2634';
+            const alignment = config?.touch_scroll_helpers_button_alignment ?? 'center';
+
+            touchScrollHelpersAutoHideEnabled = config?.touch_scroll_helpers_auto_hide_enabled !== false;
+
+            const fontSizePx = Math.max(14, Math.round(heightPx * 0.45));
+            const widthPx = Number(
+                config?.touch_scroll_helpers_width_px ??
+                Math.max(160, Math.round(heightPx * 5.9))
+            );
+
+            const { r, g, b } = hexToRgb(colorHex);
+            const bg = `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, opacity))})`;
+
+            const topBtn = document.querySelector('.touch-scroll-overlay.top');
+            const bottomBtn = document.querySelector('.touch-scroll-overlay.bottom');
+            const btns = [topBtn, bottomBtn].filter(Boolean);
+            for (const btn of btns) {
+                btn.style.height = `${heightPx}px`;
+                btn.style.fontSize = `${fontSizePx}px`;
+                btn.style.lineHeight = `${heightPx}px`;
+                btn.style.width = `min(${widthPx}px, 78vw)`;
+                btn.style.backgroundColor = bg;
+
+                if (alignment === 'left') {
+                    btn.style.left = '12px';
+                    btn.style.right = 'auto';
+                    btn.style.transform = 'translateX(0)';
+                } else if (alignment === 'right') {
+                    btn.style.left = 'auto';
+                    btn.style.right = '12px';
+                    btn.style.transform = 'translateX(0)';
+                } else {
+                    btn.style.left = '50%';
+                    btn.style.right = 'auto';
+                    btn.style.transform = 'translateX(-50%)';
+                }
+            }
+
+            // Ensure "auto-hide off" takes effect immediately on this page.
+            updateTouchScrollHelpersVisibility();
+        }
         function updateTouchScrollHelpersVisibility() {
             const topBtn = document.querySelector('.touch-scroll-overlay.top');
             const bottomBtn = document.querySelector('.touch-scroll-overlay.bottom');
@@ -1293,6 +1414,12 @@
             if (!touchScrollHelpersEnabled || !touchScrollHelpersToggleVisible) {
                 topBtn.style.display = 'none';
                 bottomBtn.style.display = 'none';
+                return;
+            }
+
+            if (!touchScrollHelpersAutoHideEnabled) {
+                topBtn.style.display = 'flex';
+                bottomBtn.style.display = 'flex';
                 return;
             }
 
@@ -1520,6 +1647,7 @@
                 console.log('[loadConfig] receiver_lat:', config.receiver_lat);
                 console.log('[loadConfig] About to populate form fields...');
                 setTouchScrollHelpersToggleVisible(config.touch_scroll_helpers_enabled !== false);
+                applyTouchScrollHelpersStyle(config);
 
                 if (config.enable_config_page === false) {
                     const warningEl = document.getElementById('configDisabledWarning');
@@ -1546,7 +1674,9 @@
                     'map_min_altitude', 'map_max_distance',
                     'clear_skies_enabled', 'clear_skies_airport',
                     'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days',
-                    'mictronics_enabled', 'mictronics_last_uploaded', 'mictronics_last_imported', 'mictronics_record_count'
+                    'mictronics_enabled', 'mictronics_last_uploaded', 'mictronics_last_imported', 'mictronics_record_count',
+                    'touch_scroll_helpers_height_px', 'touch_scroll_helpers_width_px', 'touch_scroll_helpers_opacity', 'touch_scroll_helpers_color',
+                    'touch_scroll_helpers_auto_hide_enabled', 'touch_scroll_helpers_button_alignment'
                 ];
                 
                 const missingElements = requiredIds.filter(id => !document.getElementById(id));
@@ -1606,6 +1736,16 @@
                 setChecked('enable_config_page', config.enable_config_page !== false);
                 setChecked('touch_scroll_helpers_enabled', config.touch_scroll_helpers_enabled !== false);
                 setChecked('flipoff_enabled', config.flipoff_enabled !== false);
+
+                const resolvedHeightPx = config.touch_scroll_helpers_height_px ?? config.touch_scroll_helpers_size_px ?? 44;
+                const resolvedWidthPx = config.touch_scroll_helpers_width_px ??
+                    Math.max(160, Math.round(resolvedHeightPx * 5.9));
+                setValue('touch_scroll_helpers_height_px', resolvedHeightPx);
+                setValue('touch_scroll_helpers_width_px', resolvedWidthPx);
+                setValue('touch_scroll_helpers_opacity', config.touch_scroll_helpers_opacity ?? 0.62);
+                setValue('touch_scroll_helpers_color', config.touch_scroll_helpers_color ?? '#1a2634');
+                setChecked('touch_scroll_helpers_auto_hide_enabled', config.touch_scroll_helpers_auto_hide_enabled !== false);
+                setValue('touch_scroll_helpers_button_alignment', config.touch_scroll_helpers_button_alignment ?? 'center');
 
                 const ink = config.inky || {};
                 setChecked('inky_enabled', ink.enabled === true);
@@ -1704,6 +1844,14 @@
                 show_test_flight: document.getElementById('show_test_flight').checked,
                 enable_config_page: document.getElementById('enable_config_page').checked,
                 touch_scroll_helpers_enabled: document.getElementById('touch_scroll_helpers_enabled').checked,
+                touch_scroll_helpers_height_px: parseInt(document.getElementById('touch_scroll_helpers_height_px').value) || 44,
+                touch_scroll_helpers_width_px: parseInt(document.getElementById('touch_scroll_helpers_width_px').value) || 160,
+                // Backwards compatibility with older clients/configs
+                touch_scroll_helpers_size_px: parseInt(document.getElementById('touch_scroll_helpers_height_px').value) || 44,
+                touch_scroll_helpers_opacity: parseFloat(document.getElementById('touch_scroll_helpers_opacity').value) || 0.62,
+                touch_scroll_helpers_color: (document.getElementById('touch_scroll_helpers_color').value || '#1a2634').trim(),
+                touch_scroll_helpers_auto_hide_enabled: document.getElementById('touch_scroll_helpers_auto_hide_enabled').checked,
+                touch_scroll_helpers_button_alignment: document.getElementById('touch_scroll_helpers_button_alignment').value || 'center',
                 flipoff_enabled: document.getElementById('flipoff_enabled').checked,
                 http_host: document.getElementById('http_host').value,
                 http_port: parseInt(document.getElementById('http_port').value),

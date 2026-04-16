@@ -344,6 +344,20 @@ def validate_config(config):
         return 'enable_config_page must be a boolean'
     if 'touch_scroll_helpers_enabled' in config and not isinstance(config.get('touch_scroll_helpers_enabled'), bool):
         return 'touch_scroll_helpers_enabled must be a boolean'
+    if 'touch_scroll_helpers_size_px' in config and not isinstance(config.get('touch_scroll_helpers_size_px'), (int, float)):
+        return 'touch_scroll_helpers_size_px must be a number'
+    if 'touch_scroll_helpers_height_px' in config and not isinstance(config.get('touch_scroll_helpers_height_px'), (int, float)):
+        return 'touch_scroll_helpers_height_px must be a number'
+    if 'touch_scroll_helpers_width_px' in config and not isinstance(config.get('touch_scroll_helpers_width_px'), (int, float)):
+        return 'touch_scroll_helpers_width_px must be a number'
+    if 'touch_scroll_helpers_opacity' in config and not isinstance(config.get('touch_scroll_helpers_opacity'), (int, float)):
+        return 'touch_scroll_helpers_opacity must be a number'
+    if 'touch_scroll_helpers_color' in config and not isinstance(config.get('touch_scroll_helpers_color'), str):
+        return 'touch_scroll_helpers_color must be a string'
+    if 'touch_scroll_helpers_auto_hide_enabled' in config and not isinstance(config.get('touch_scroll_helpers_auto_hide_enabled'), bool):
+        return 'touch_scroll_helpers_auto_hide_enabled must be a boolean'
+    if 'touch_scroll_helpers_button_alignment' in config and not isinstance(config.get('touch_scroll_helpers_button_alignment'), str):
+        return 'touch_scroll_helpers_button_alignment must be a string'
     if 'flipoff_enabled' in config and not isinstance(config.get('flipoff_enabled'), bool):
         return 'flipoff_enabled must be a boolean'
     
@@ -356,6 +370,36 @@ def validate_config(config):
         return 'http_port must be between 1 and 65535'
     if not (1 <= config.get('websocket_port', 0) <= 65535):
         return 'websocket_port must be between 1 and 65535'
+
+    # Scroll helper UI validation (optional)
+    if 'touch_scroll_helpers_size_px' in config:
+        v = config.get('touch_scroll_helpers_size_px')
+        if not (24 <= v <= 200):
+            return 'touch_scroll_helpers_size_px must be between 24 and 200'
+    if 'touch_scroll_helpers_height_px' in config:
+        v = config.get('touch_scroll_helpers_height_px')
+        if not (24 <= v <= 200):
+            return 'touch_scroll_helpers_height_px must be between 24 and 200'
+    if 'touch_scroll_helpers_width_px' in config:
+        v = config.get('touch_scroll_helpers_width_px')
+        if not (10 <= v <= 800):
+            return 'touch_scroll_helpers_width_px must be between 10 and 800'
+    if 'touch_scroll_helpers_opacity' in config:
+        v = config.get('touch_scroll_helpers_opacity')
+        if not (0 <= v <= 1):
+            return 'touch_scroll_helpers_opacity must be between 0 and 1'
+    if 'touch_scroll_helpers_color' in config:
+        c = config.get('touch_scroll_helpers_color', '')
+        if not (isinstance(c, str) and len(c) == 7 and c.startswith('#')):
+            return 'touch_scroll_helpers_color must be a #RRGGBB hex string'
+        # Basic hex check
+        import re
+        if not re.match(r'^#[0-9a-fA-F]{6}$', c):
+            return 'touch_scroll_helpers_color must be a #RRGGBB hex string'
+    if 'touch_scroll_helpers_button_alignment' in config:
+        a = config.get('touch_scroll_helpers_button_alignment')
+        if a not in ('left', 'center', 'right'):
+            return 'touch_scroll_helpers_button_alignment must be one of: left, center, right'
     
     # Validate URL format
     dump1090_url = config.get('dump1090_url', '')
@@ -421,6 +465,24 @@ def load_config():
                 config['enable_config_page'] = True
             if 'touch_scroll_helpers_enabled' not in config:
                 config['touch_scroll_helpers_enabled'] = True
+
+            # Scroll helper sizing (new: height/width; old: size_px)
+            if 'touch_scroll_helpers_height_px' not in config:
+                config['touch_scroll_helpers_height_px'] = config.get('touch_scroll_helpers_size_px', 44)
+            if 'touch_scroll_helpers_width_px' not in config:
+                config['touch_scroll_helpers_width_px'] = max(160, round(config['touch_scroll_helpers_height_px'] * 5.9))
+            # Backwards compatibility for older clients
+            if 'touch_scroll_helpers_size_px' not in config:
+                config['touch_scroll_helpers_size_px'] = config['touch_scroll_helpers_height_px']
+
+            if 'touch_scroll_helpers_opacity' not in config:
+                config['touch_scroll_helpers_opacity'] = 0.62
+            if 'touch_scroll_helpers_color' not in config:
+                config['touch_scroll_helpers_color'] = '#1a2634'
+            if 'touch_scroll_helpers_auto_hide_enabled' not in config:
+                config['touch_scroll_helpers_auto_hide_enabled'] = True
+            if 'touch_scroll_helpers_button_alignment' not in config:
+                config['touch_scroll_helpers_button_alignment'] = 'center'
             if 'flipoff_enabled' not in config:
                 config['flipoff_enabled'] = True
             if 'mictronics_aircraft_db' not in config or not isinstance(config.get('mictronics_aircraft_db'), dict):
