@@ -492,7 +492,6 @@ def find_best_flight(enriched_flights, config, verbose=False):
     map_config = config.get('map_generation', {})
     require_route = map_config.get('require_route', True)
     max_distance = map_config.get('max_distance_km', 500)
-    min_altitude = map_config.get('min_altitude', 10000)
     prefer_closest = map_config.get('prefer_closest', True)
     
     candidates = []
@@ -500,7 +499,6 @@ def find_best_flight(enriched_flights, config, verbose=False):
         'no_route': 0,
         'no_position': 0,
         'too_far': 0,
-        'too_low': 0
     }
     
     for flight in enriched_flights:
@@ -529,13 +527,7 @@ def find_best_flight(enriched_flights, config, verbose=False):
                 print(f"  ❌ {callsign}: Too far ({distance:.1f}km > {max_distance}km)")
             continue
         
-        # Check altitude requirement
         altitude = flight.get('altitude')
-        if altitude is not None and altitude < min_altitude:
-            rejected_reasons['too_low'] += 1
-            if verbose:
-                print(f"  ❌ {callsign}: Too low ({altitude}ft < {min_altitude}ft)")
-            continue
         
         # Score the flight (higher is better)
         score = 0
@@ -598,7 +590,7 @@ def find_best_flight(enriched_flights, config, verbose=False):
         print(f"⚠️  Map generation: No flights meet criteria (total: {total_flights}, with routes: {routes_count})")
         if sum(rejected_reasons.values()) > 0:
             print(f"   Rejected: {rejected_reasons['no_route']} no route, {rejected_reasons['no_position']} no position, "
-                  f"{rejected_reasons['too_far']} too far, {rejected_reasons['too_low']} too low")
+                  f"{rejected_reasons['too_far']} too far")
     
     if not candidates:
         return None
