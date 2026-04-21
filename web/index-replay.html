@@ -104,6 +104,9 @@
             z-index: 5000;
             backdrop-filter: blur(3px);
             -webkit-backdrop-filter: blur(3px);
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
 
         .touch-scroll-overlay.top { top: 8px; }
@@ -2499,6 +2502,16 @@
         }
 
         function scrollPageByStep(direction) {
+            // Prevent text selection/drag highlighting on touch devices.
+            try {
+                const sel = window.getSelection && window.getSelection();
+                if (sel) sel.removeAllRanges();
+            } catch (_) {}
+            try {
+                if (document.activeElement && document.activeElement.blur) {
+                    document.activeElement.blur();
+                }
+            } catch (_) {}
             const delta = Math.round(window.innerHeight * 0.55) * direction;
             window.scrollBy({ top: delta, behavior: 'smooth' });
             setTimeout(updateTouchScrollHelpersVisibility, 260);
