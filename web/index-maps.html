@@ -2228,11 +2228,6 @@
                 const response = await fetch('/api/config?' + Date.now(), { cache: 'no-cache' });
                 if (!response.ok) return;
                 const config = await response.json();
-                if (config.enable_config_page === false) {
-                    document.querySelectorAll('a[href="config.html"]').forEach((link) => {
-                        link.style.display = 'none';
-                    });
-                }
                 setTouchScrollHelpersToggleVisible(config.touch_scroll_helpers_enabled !== false);
                 applyTouchScrollHelpersStyle(config);
             } catch (e) {

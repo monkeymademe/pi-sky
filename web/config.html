@@ -304,6 +304,10 @@
             transition: background 0.3s ease;
         }
 
+        #configCreditsSection {
+            margin-top: 20px;
+        }
+
         .config-disabled-warning {
             display: none;
             background: rgba(61, 80, 102, 0.15);
@@ -819,11 +823,13 @@
             </div>
         </div>
 
+        <!-- Outer white card stays visible when settings are disabled; only #configMain is hidden -->
+        <div class="config-main" id="configPageCard">
         <div id="configDisabledWarning" class="config-disabled-warning" role="alert">
             This config page is disabled. To re-enable it, edit <code>config.json</code> directly and set <code>enable_config_page</code> to <code>true</code>.
         </div>
 
-        <div class="config-main" id="configMain">
+        <div id="configMain">
             <div id="configFeedback" class="config-feedback"></div>
 
             <form id="configForm">
@@ -939,7 +945,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <span class="help-text">Warning: disabling this hides and blocks config.html. The only way to restore access is editing config.json directly and setting enable_config_page to true.</span>
+                            <span class="help-text">When disabled, the settings form is hidden on this page, but the Config link stays in the nav. Re-enable by editing <code>config.json</code> and setting <code>enable_config_page</code> to <code>true</code>.</span>
                         </div>
                     </div>
                 </div>
@@ -1153,97 +1159,98 @@
                     </div>
                 </div>
 
-                <!-- Credits -->
-                <div class="section credits-section">
-                    <div class="section-header">
-                        Credits
-                    </div>
-                    <div class="section-content">
-                        <div class="credits-builder">
-                            <a class="credits-builder-logo" href="https://bytingidea.com/" target="_blank" rel="noopener noreferrer" aria-label="Visit Bytingidea">
-                                <img src="https://bytingidea.com/content/images/2025/03/bytingidea-3.png" alt="Bytingidea logo" loading="lazy" decoding="async">
-                            </a>
-                            <div class="credits-builder-text">
-                                <strong>Built by James Mitchell</strong><br>
-                                Pi-Sky is designed and developed by <a href="https://bytingidea.com/" target="_blank" rel="noopener noreferrer">Bytingidea</a>.
-                                Source code: <a href="https://github.com/monkeymademe/pi-sky" target="_blank" rel="noopener noreferrer">GitHub</a>.
-                            </div>
-                        </div>
-                        <p class="credits-intro">
-                            Third-party data services, datasets, and software used by Pi-Sky. Thank you to the authors and providers.
-                        </p>
-                        <div class="credits-columns">
-                            <div>
-                                <h3 class="credits-column-title">Data Sources</h3>
-                                <ul class="credits-list">
-                                    <li>
-                                        <strong>adsb.lol</strong>
-                                        <span class="credit-desc">ADS-B API: flight routes (routeset), live aircraft positions, and aircraft metadata (type, description, registration) by ICAO hex.</span>
-                                        <a href="https://api.adsb.lol/docs" target="_blank" rel="noopener noreferrer">https://api.adsb.lol/docs</a>
-                                    </li>
-                                    <li>
-                                        <strong>OpenFlights</strong>
-                                        <span class="credit-desc">Airport and airline reference data (cached locally as <code>airports.dat</code> / <code>airlines.dat</code>) for coordinates, countries, and airline names.</span>
-                                        <a href="https://openflights.org/data.html" target="_blank" rel="noopener noreferrer">https://openflights.org/data.html</a>
-                                    </li>
-                                    <li>
-                                        <strong>Mictronics Aircraft Database</strong>
-                                        <span class="credit-desc">Optional local aircraft registration / ICAO type / model strings from user-uploaded dump1090-style exports.</span>
-                                        <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">https://www.mictronics.de/aircraft-database/#</a>
-                                    </li>
-                                    <li>
-                                        <strong>OpenStreetMap &amp; Nominatim</strong>
-                                        <span class="credit-desc">Map tiles and reverse geocoding (place names from coordinates). OpenStreetMap data is © OpenStreetMap contributors.</span>
-                                        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">https://www.openstreetmap.org/copyright</a>
-                                    </li>
-                                    <li>
-                                        <strong>Wikimedia Commons API</strong>
-                                        <span class="credit-desc">Search API used to find aircraft photos by registration where applicable.</span>
-                                        <a href="https://commons.wikimedia.org/wiki/Commons:API" target="_blank" rel="noopener noreferrer">https://commons.wikimedia.org/wiki/Commons:API</a>
-                                    </li>
-                                    <li>
-                                        <strong>Google Favicons</strong>
-                                        <span class="credit-desc">Favicon lookup for airline logo icons derived from carrier domains (where available).</span>
-                                        <a href="https://www.google.com/s2/favicons" target="_blank" rel="noopener noreferrer">Google favicon service</a>
-                                    </li>
-                                    <li>
-                                        <strong>PlaneSpotters.net (replay UI)</strong>
-                                        <span class="credit-desc">Optional aircraft photo lookup in the replay map view.</span>
-                                        <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">https://www.planespotters.net</a>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div>
-                                <h3 class="credits-column-title">Design</h3>
-                                <ul class="credits-list">
-                                    <li>
-                                        <strong>Leaflet &amp; Anime.js</strong>
-                                        <span class="credit-desc">Interactive maps (Leaflet) and UI animation (Anime.js, via CDN) on map and list views.</span>
-                                        <a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>
-                                        ·
-                                        <a href="https://animejs.com" target="_blank" rel="noopener noreferrer">Anime.js</a>
-                                    </li>
-                                    <li>
-                                        <strong>Bootstrap Icons</strong>
-                                        <span class="credit-desc">UI icon assets used in the map tooltip actions (including the ticket detailed icon).</span>
-                                        <a href="https://icons.getbootstrap.com" target="_blank" rel="noopener noreferrer">https://icons.getbootstrap.com</a>
-                                    </li>
-                                    <li>
-                                        <strong>FlipOff</strong>
-                                        <span class="credit-desc">Split-flap display UI on the flight list (card view).</span>
-                                        <a href="https://github.com/magnum6actual/flipoff" target="_blank" rel="noopener noreferrer">https://github.com/magnum6actual/flipoff</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="actions">
                     <button type="button" class="btn-secondary" onclick="loadConfig()">Reset</button>
                     <button type="submit" class="btn-primary">Save Configuration</button>
                 </div>
             </form>
+        </div>
+
+        <!-- Credits: inside #configPageCard (same white panel as warning + form) -->
+        <div class="section credits-section" id="configCreditsSection">
+            <div class="section-header">
+                Credits
+            </div>
+            <div class="section-content">
+                <div class="credits-builder">
+                    <a class="credits-builder-logo" href="https://bytingidea.com/" target="_blank" rel="noopener noreferrer" aria-label="Visit Bytingidea">
+                        <img src="https://bytingidea.com/content/images/2025/03/bytingidea-3.png" alt="Bytingidea logo" loading="lazy" decoding="async">
+                    </a>
+                    <div class="credits-builder-text">
+                        <strong>Built by James Mitchell</strong><br>
+                        Pi-Sky is designed and developed by <a href="https://bytingidea.com/" target="_blank" rel="noopener noreferrer">Bytingidea</a>.
+                        Source code: <a href="https://github.com/monkeymademe/pi-sky" target="_blank" rel="noopener noreferrer">GitHub</a>.
+                    </div>
+                </div>
+                <p class="credits-intro">
+                    Third-party data services, datasets, and software used by Pi-Sky. Thank you to the authors and providers.
+                </p>
+                <div class="credits-columns">
+                    <div>
+                        <h3 class="credits-column-title">Data Sources</h3>
+                        <ul class="credits-list">
+                            <li>
+                                <strong>adsb.lol</strong>
+                                <span class="credit-desc">ADS-B API: flight routes (routeset), live aircraft positions, and aircraft metadata (type, description, registration) by ICAO hex.</span>
+                                <a href="https://api.adsb.lol/docs" target="_blank" rel="noopener noreferrer">https://api.adsb.lol/docs</a>
+                            </li>
+                            <li>
+                                <strong>OpenFlights</strong>
+                                <span class="credit-desc">Airport and airline reference data (cached locally as <code>airports.dat</code> / <code>airlines.dat</code>) for coordinates, countries, and airline names.</span>
+                                <a href="https://openflights.org/data.html" target="_blank" rel="noopener noreferrer">https://openflights.org/data.html</a>
+                            </li>
+                            <li>
+                                <strong>Mictronics Aircraft Database</strong>
+                                <span class="credit-desc">Optional local aircraft registration / ICAO type / model strings from user-uploaded dump1090-style exports.</span>
+                                <a href="https://www.mictronics.de/aircraft-database/#" target="_blank" rel="noopener noreferrer">https://www.mictronics.de/aircraft-database/#</a>
+                            </li>
+                            <li>
+                                <strong>OpenStreetMap &amp; Nominatim</strong>
+                                <span class="credit-desc">Map tiles and reverse geocoding (place names from coordinates). OpenStreetMap data is © OpenStreetMap contributors.</span>
+                                <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">https://www.openstreetmap.org/copyright</a>
+                            </li>
+                            <li>
+                                <strong>Wikimedia Commons API</strong>
+                                <span class="credit-desc">Search API used to find aircraft photos by registration where applicable.</span>
+                                <a href="https://commons.wikimedia.org/wiki/Commons:API" target="_blank" rel="noopener noreferrer">https://commons.wikimedia.org/wiki/Commons:API</a>
+                            </li>
+                            <li>
+                                <strong>Google Favicons</strong>
+                                <span class="credit-desc">Favicon lookup for airline logo icons derived from carrier domains (where available).</span>
+                                <a href="https://www.google.com/s2/favicons" target="_blank" rel="noopener noreferrer">Google favicon service</a>
+                            </li>
+                            <li>
+                                <strong>PlaneSpotters.net (replay UI)</strong>
+                                <span class="credit-desc">Optional aircraft photo lookup in the replay map view.</span>
+                                <a href="https://www.planespotters.net" target="_blank" rel="noopener noreferrer">https://www.planespotters.net</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="credits-column-title">Design</h3>
+                        <ul class="credits-list">
+                            <li>
+                                <strong>Leaflet &amp; Anime.js</strong>
+                                <span class="credit-desc">Interactive maps (Leaflet) and UI animation (Anime.js, via CDN) on map and list views.</span>
+                                <a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>
+                                ·
+                                <a href="https://animejs.com" target="_blank" rel="noopener noreferrer">Anime.js</a>
+                            </li>
+                            <li>
+                                <strong>Bootstrap Icons</strong>
+                                <span class="credit-desc">UI icon assets used in the map tooltip actions (including the ticket detailed icon).</span>
+                                <a href="https://icons.getbootstrap.com" target="_blank" rel="noopener noreferrer">https://icons.getbootstrap.com</a>
+                            </li>
+                            <li>
+                                <strong>FlipOff</strong>
+                                <span class="credit-desc">Split-flap display UI on the flight list (card view).</span>
+                                <a href="https://github.com/magnum6actual/flipoff" target="_blank" rel="noopener noreferrer">https://github.com/magnum6actual/flipoff</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
         </div>
     </div>
 
@@ -1656,6 +1663,13 @@
                     if (mainEl) mainEl.style.display = 'none';
                     return;
                 }
+
+                {
+                    const warningEl = document.getElementById('configDisabledWarning');
+                    const mainEl = document.getElementById('configMain');
+                    if (warningEl) warningEl.style.display = 'none';
+                    if (mainEl) mainEl.style.display = '';
+                }
                 
                 // CRITICAL: Verify we can access the DOM
                 const testEl = document.getElementById('dump1090_url');
@@ -1825,7 +1839,7 @@
             const enableConfigToggle = document.getElementById('enable_config_page');
             if (enableConfigToggle && !enableConfigToggle.checked) {
                 const confirmed = window.confirm(
-                    'Disable config page now?\n\nThis will block config.html. The only way to restore it is editing config.json directly and setting enable_config_page to true.'
+                    'Disable config page now?\n\nThe settings form will be hidden on config.html (nav link stays). Re-enable by editing config.json and setting enable_config_page to true.'
                 );
                 if (!confirmed) {
                     submitBtn.disabled = false;
@@ -1997,7 +2011,7 @@
         if (enableConfigToggle) {
             enableConfigToggle.addEventListener('change', () => {
                 if (!enableConfigToggle.checked) {
-                    showStatus('Warning: once saved, config.html will be disabled. To restore access, edit config.json directly.', 'info');
+                    showStatus('Warning: once saved, the settings form on config.html will be hidden. Re-enable by editing config.json (enable_config_page).', 'info');
                 }
             });
         }
