@@ -764,8 +764,36 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None, position_h
     try:
         print(f"[{timestamp}] API CALL: get_flight_route_adsblol - Callsign: {callsign.strip()}, ICAO: {icao}, Position: {lat}, {lon}")
         response = requests.post(url, json=payload, timeout=10)
-        if response.status_code == 200:
-            routes = response.json()
+        if 200 <= response.status_code < 300:
+            routes = []
+            body_text = (response.text or "").strip()
+            if body_text:
+                try:
+                    routes = response.json()
+                except ValueError:
+                    print(f"[{timestamp}] API WARNING: Invalid JSON from routeset for {callsign.strip()} (status {response.status_code})")
+            else:
+                print(f"[{timestamp}] API WARNING: Empty routeset body for {callsign.strip()} (status {response.status_code})")
+
+            # Fallback: single-flight route endpoint. This exists in adsb.lol API source and
+            # can still return route data when POST /api/0/routeset returns empty.
+            if not routes:
+                fallback_url = f"https://api.adsb.lol/api/0/route/{callsign.strip()}/{lat}/{lon}"
+                try:
+                    fallback_response = requests.get(fallback_url, timeout=10)
+                    if 200 <= fallback_response.status_code < 300 and (fallback_response.text or "").strip():
+                        fallback_route = fallback_response.json()
+                        if isinstance(fallback_route, dict):
+                            routes = [fallback_route]
+                            print(f"[{timestamp}] API FALLBACK SUCCESS: /api/0/route returned data for {callsign.strip()}")
+                    else:
+                        print(
+                            f"[{timestamp}] API FALLBACK WARNING: /api/0/route status {fallback_response.status_code} "
+                            f"for {callsign.strip()}"
+                        )
+                except Exception as fallback_error:
+                    print(f"[{timestamp}] API FALLBACK EXCEPTION: {callsign.strip()} - {fallback_error}")
+
             if routes and len(routes) > 0:
                 route = routes[0]
                 airport_codes = route.get('airport_codes', '')
@@ -974,7 +1002,7 @@ def get_flight_route_adsblol(callsign, icao=None, lat=None, lon=None, position_h
                         if is_round_trip:
                             print(f"[{timestamp}] Round-trip route: {result.get('full_route_iata', airport_codes)}")
                         return result
-            print(f"[{timestamp}] API WARNING: No route found for {callsign.strip()}")
+            print(f"[{timestamp}] API WARNING: No route found for {callsign.strip()} (status {response.status_code})")
         else:
             print(f"[{timestamp}] API ERROR: Status {response.status_code} for {callsign.strip()}")
     except Exception as e:

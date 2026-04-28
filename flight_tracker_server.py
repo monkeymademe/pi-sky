@@ -1732,6 +1732,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.handle_flights_api()
         elif parsed_path.startswith('/api/aircraft'):
             self.handle_aircraft_api()
+        elif path_lc == '/api/dump1090/aircraft.json':
+            self.handle_dump1090_passthrough()
         else:
             super().do_GET()
     
@@ -2982,6 +2984,52 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({'error': error_msg}).encode())
+
+    def handle_dump1090_passthrough(self):
+        """Pass through configured dump1090 aircraft feed."""
+        try:
+            config = load_config()
+            dump1090_url = config.get('dump1090_url')
+            if not dump1090_url:
+                error_json = json.dumps({'error': 'dump1090_url not configured'}).encode('utf-8')
+                self.send_response(503)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(error_json)))
+                self.end_headers()
+                self.wfile.write(error_json)
+                self.wfile.flush()
+                return
+
+            upstream = requests.get(dump1090_url, timeout=8)
+            body = upstream.content or b''
+            content_type = upstream.headers.get('Content-Type', 'application/json; charset=utf-8')
+
+            self.send_response(upstream.status_code)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Expires', '0')
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+            self.wfile.flush()
+        except requests.RequestException as e:
+            error_json = json.dumps({'error': f'dump1090 passthrough failed: {str(e)}'}).encode('utf-8')
+            self.send_response(502)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(error_json)))
+            self.end_headers()
+            self.wfile.write(error_json)
+            self.wfile.flush()
+        except Exception as e:
+            error_json = json.dumps({'error': str(e)}).encode('utf-8')
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(error_json)))
+            self.end_headers()
+            self.wfile.write(error_json)
+            self.wfile.flush()
 
     def handle_config_get(self):
         """Handle GET /api/config - return current configuration"""
