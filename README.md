@@ -50,9 +50,37 @@ flight_tracker_server.py
 
 ## Installation
 
+### One-line install (recommended on Raspberry Pi)
+
+Installs **dump1090-fa**, **lighttpd** (for `aircraft.json` on port 8080), Python dependencies, `config.json`, and systemd services for dump1090 and Pi-Sky:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/monkeymademe/pi-sky/main/install.sh | sudo bash
+```
+
+From a cloned repo instead:
+
+```bash
+sudo ./install.sh
+```
+
+Optional environment variables:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PI_SKY_DIR` | `/home/pi/pi-sky` | Install directory |
+| `PI_SKY_USER` | `pi` | Unix user for the Pi-Sky service |
+| `PI_SKY_LAT` / `PI_SKY_LON` | auto-detected | Receiver coordinates |
+| `PI_SKY_SKIP_DUMP1090=1` | — | Skip dump1090-fa install (decoder already present) |
+| `PI_SKY_SKIP_SERVICE=1` | — | Install deps only; do not enable systemd |
+
+After install, open `http://<pi-ip>:5050/index-maps.html` (port from `config.json`).
+
+### Manual install
+
 1. **Prerequisites**
    - **Python 3** with `pip` and `venv`.
-   - A running **dump1090** (or compatible) feed reachable at the URL you will put in `config.json` (Pi-Sky does not install the decoder for you).
+   - A running **dump1090** (or compatible) feed reachable at the URL you will put in `config.json`.
    - On **Raspberry Pi OS / Debian**, install Cairo headers **before** `pip` so `cairosvg` can build (see `requirements.txt`):
      ```bash
      sudo apt-get update
@@ -220,6 +248,7 @@ All pages use the same SSE stream (`/events`) and backend.
 
 | Path | Role |
 |------|------|
+| `install.sh` | One-line installer: dump1090-fa, venv, config, systemd |
 | `setup_venv.sh` | Create `venv/` and install requirements |
 | `start_flight_tracker.sh` | Launch server (activates `venv` if present) |
 | `start_kiosk.sh` | Chromium kiosk pointed at the map URL |

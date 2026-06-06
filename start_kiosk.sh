@@ -2,7 +2,8 @@
 # Script to start Pi-Sky in kiosk mode
 # This opens Chromium in fullscreen kiosk mode
 
-CONFIG_FILE="/home/pi/pi-sky/config.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/config.json"
 if [ -f "$CONFIG_FILE" ]; then
     HTTP_HOST=$(grep -o '"http_host": "[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     HTTP_PORT=$(grep -o '"http_port": [0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')

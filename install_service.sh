@@ -36,8 +36,36 @@ fi
 
 chmod +x "$PROJECT_DIR/start_flight_tracker.sh"
 
-echo "Copying service file to $SYSTEMD_DIR..."
-cp "$PROJECT_DIR/$SERVICE_FILE" "$SYSTEMD_DIR/$SERVICE_FILE"
+PI_USER="${SUDO_USER:-$USER}"
+PI_HOME="$(getent passwd "$PI_USER" | cut -d: -f6)"
+
+echo "Writing service file to $SYSTEMD_DIR (user=$PI_USER, dir=$PROJECT_DIR)..."
+cat >"$SYSTEMD_DIR/$SERVICE_FILE" <<EOF
+[Unit]
+Description=Pi-Sky server
+After=network-online.target dump1090-fa.service lighttpd.service
+Wants=network-online.target dump1090-fa.service
+
+[Service]
+Type=simple
+User=${PI_USER}
+Group=${PI_USER}
+WorkingDirectory=${PROJECT_DIR}
+Environment="HOME=${PI_HOME}"
+Environment="USER=${PI_USER}"
+Environment="PATH=${PROJECT_DIR}/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/bin/bash ${PROJECT_DIR}/start_flight_tracker.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target
+EOF
 chmod 644 "$SYSTEMD_DIR/$SERVICE_FILE"
 
 echo "Reloading systemd daemon..."

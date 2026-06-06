@@ -1,6 +1,7 @@
 [Unit]
 Description=Pi-Sky server
-After=network.target
+After=network-online.target dump1090-fa.service lighttpd.service
+Wants=network-online.target dump1090-fa.service
 
 [Service]
 Type=simple
@@ -16,8 +17,6 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-
-# Security settings
 NoNewPrivileges=true
 PrivateTmp=false
 
