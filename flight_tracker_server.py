@@ -401,10 +401,13 @@ def validate_config(config):
         if a not in ('left', 'center', 'right'):
             return 'touch_scroll_helpers_button_alignment must be one of: left, center, right'
     
-    # Validate URL format
+    # Validate dump1090 source (HTTP URL or local aircraft.json path)
     dump1090_url = config.get('dump1090_url', '')
-    if not dump1090_url.startswith(('http://', 'https://')):
-        return 'dump1090_url must start with http:// or https://'
+    if not (
+        dump1090_url.startswith(('http://', 'https://', 'file://'))
+        or dump1090_url.startswith('/')
+    ):
+        return 'dump1090_url must be an http(s) URL or a local path to aircraft.json'
     
     # Validate nested objects if present
     if 'map_generation' in config:
@@ -515,21 +518,54 @@ def load_config():
         print("\n" + "=" * 80)
         sys.exit(1)
 
+def _dump1090_local_path(dump1090_url):
+    """Return a local filesystem path for dump1090 aircraft.json, or None."""
+    if not dump1090_url:
+        return None
+    if dump1090_url.startswith('file://'):
+        return dump1090_url[7:]
+    if dump1090_url.startswith('/'):
+        return dump1090_url
+    return None
+
+
+def fetch_dump1090_payload(dump1090_url, timeout=5):
+    """
+    Fetch dump1090 aircraft.json from HTTP or a local path.
+
+    Returns:
+        tuple: (data_dict_or_none, error_message_or_none)
+    """
+    local_path = _dump1090_local_path(dump1090_url)
+    if local_path:
+        try:
+            with open(local_path, 'r', encoding='utf-8') as handle:
+                return json.load(handle), None
+        except FileNotFoundError:
+            return None, f'file not found: {local_path}'
+        except json.JSONDecodeError as exc:
+            return None, f'invalid JSON in {local_path}: {exc}'
+        except OSError as exc:
+            return None, str(exc)
+
+    try:
+        response = requests.get(dump1090_url, timeout=timeout)
+        response.raise_for_status()
+        return response.json(), None
+    except requests.exceptions.Timeout:
+        return None, 'connection timed out'
+    except requests.exceptions.ConnectionError:
+        return None, 'connection failed'
+    except requests.RequestException as exc:
+        return None, str(exc)
+    except json.JSONDecodeError as exc:
+        return None, f'invalid JSON response: {exc}'
+
+
 def get_aircraft(dump1090_url):
     """Fetch aircraft data from dump1090"""
-    try:
-        response = requests.get(dump1090_url, timeout=5)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.Timeout:
-        # Connection timeout - dump1090 might be down or unreachable
-        return None
-    except requests.exceptions.ConnectionError as e:
-        # Connection error - network issue or dump1090 not running
-        return None
-    except requests.RequestException as e:
-        # Other HTTP errors
-        return None
+    data, _error = fetch_dump1090_payload(dump1090_url, timeout=5)
+    return data
 
 def find_best_flight(enriched_flights, config, verbose=False):
     """
@@ -3000,11 +3036,28 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                 self.wfile.flush()
                 return
 
-            upstream = requests.get(dump1090_url, timeout=8)
-            body = upstream.content or b''
-            content_type = upstream.headers.get('Content-Type', 'application/json; charset=utf-8')
+            local_path = _dump1090_local_path(dump1090_url)
+            if local_path:
+                data, error = fetch_dump1090_payload(dump1090_url, timeout=8)
+                if error:
+                    error_json = json.dumps({'error': error}).encode('utf-8')
+                    self.send_response(503)
+                    self.send_header('Content-Type', 'application/json; charset=utf-8')
+                    self.send_header('Content-Length', str(len(error_json)))
+                    self.end_headers()
+                    self.wfile.write(error_json)
+                    self.wfile.flush()
+                    return
+                body = json.dumps(data).encode('utf-8')
+                status_code = 200
+                content_type = 'application/json; charset=utf-8'
+            else:
+                upstream = requests.get(dump1090_url, timeout=8)
+                body = upstream.content or b''
+                status_code = upstream.status_code
+                content_type = upstream.headers.get('Content-Type', 'application/json; charset=utf-8')
 
-            self.send_response(upstream.status_code)
+            self.send_response(status_code)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')

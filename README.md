@@ -76,6 +76,18 @@ Optional environment variables:
 
 After install, open `http://<pi-ip>:5050/index-maps.html` (port from `config.json`).
 
+### Uninstall / retest install
+
+To reset and retest the installer:
+
+```bash
+# Remove Pi-Sky service and runtime files; keep dump1090
+sudo ./uninstall.sh --yes
+
+# Full clean slate (also removes dump1090-fa) before a curl install test
+sudo ./uninstall.sh --yes --purge --with-dump1090
+```
+
 ### Manual install
 
 1. **Prerequisites**
@@ -249,6 +261,7 @@ All pages use the same SSE stream (`/events`) and backend.
 | Path | Role |
 |------|------|
 | `install.sh` | One-line installer: dump1090-fa, venv, config, systemd |
+| `uninstall.sh` | Remove Pi-Sky (and optionally dump1090) to retest install |
 | `setup_venv.sh` | Create `venv/` and install requirements |
 | `start_flight_tracker.sh` | Launch server (activates `venv` if present) |
 | `start_kiosk.sh` | Chromium kiosk pointed at the map URL |
@@ -289,7 +302,8 @@ Replace `<http_port>` with the value from `config.json`.
 ## Troubleshooting
 
 - **Live updates not streaming** — Open the UI and DevTools: confirm `EventSource` connects to `http://<host>:<port>/events` (same scheme/host/port as the page). Reverse proxies must forward long-lived GET streams; avoid buffering `/events`.
-- **No aircraft / empty map** — Check dump1090 is running and `dump1090_url` in `config.json` loads in a browser or `curl` (expect JSON with an `aircraft` array). Pi-Sky must reach that host from the Pi (firewall, wrong IP, or wrong port).
+- **No aircraft / empty map** — Check dump1090 is running and `dump1090_url` in `config.json` is reachable. Use `curl` for HTTP URLs or `cat /run/dump1090-fa/aircraft.json` for the local file fallback (expect JSON with an `aircraft` array).
+- **`lighttpd` failed during install** — The installer may fall back to `/run/dump1090-fa/aircraft.json` automatically. To repair lighttpd: `sudo ./scripts/fix_lighttpd.sh`. Pi-hole and other port-80 services often conflict with lighttpd; Pi-Sky does not require lighttpd when using the local JSON path.
 - **Routes or photos missing** — Many flights need a **callsign**; enrichment depends on third-party APIs (e.g. adsb.lol). Not every aircraft will have a full route.
 - **`pip install` / import errors for `cairosvg` or Cairo** — Install system Cairo dev packages first (see **Installation**), then reinstall requirements.
 - **Inky / map PNG errors** — Set `inky.enabled` only when using hardware; ensure `map_to_png.py` dependencies and (for the panel) Inky drivers work on your OS.

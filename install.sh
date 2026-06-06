@@ -114,6 +114,50 @@ install_dump1090_fa() {
   apt-get install -y dump1090-fa
 }
 
+cleanup_duplicate_lighttpd_links() {
+  # Older installer versions created numeric-prefixed symlinks alongside
+  # lighty-enable-mod links, which duplicates config and breaks lighttpd.
+  local dup
+  for dup in 88-dump1090-fa-statcache.conf 89-skyaware.conf; do
+    if [ -L "/etc/lighttpd/conf-enabled/$dup" ]; then
+      log "Removing duplicate lighttpd config link: $dup"
+      rm -f "/etc/lighttpd/conf-enabled/$dup"
+    fi
+  done
+}
+
+setup_lighttpd_for_dump1090() {
+  cleanup_duplicate_lighttpd_links
+
+  mkdir -p /var/cache/lighttpd/uploads
+  chown www-data:www-data /var/cache/lighttpd/uploads 2>/dev/null || true
+
+  if command -v lighty-enable-mod &>/dev/null; then
+    if ! grep -q -E '^\S*server\.stat-cache-engine' /etc/lighttpd/conf-enabled/*.conf 2>/dev/null; then
+      lighty-enable-mod dump1090-fa-statcache 2>/dev/null || true
+    fi
+    lighty-enable-mod skyaware 2>/dev/null || true
+  fi
+
+  if lighttpd -tt -f /etc/lighttpd/lighttpd.conf >/tmp/pi-sky-lighttpd-test.log 2>&1; then
+    systemctl enable lighttpd.service 2>/dev/null || true
+    if systemctl restart lighttpd.service; then
+      PI_SKY_DUMP1090_URL="${PI_SKY_DUMP1090_URL:-http://127.0.0.1:8080/data/aircraft.json}"
+      return 0
+    fi
+  fi
+
+  warn "lighttpd failed to start — Pi-Sky will read dump1090 JSON directly from disk"
+  if [ -f /tmp/pi-sky-lighttpd-test.log ]; then
+    tail -20 /tmp/pi-sky-lighttpd-test.log >&2 || true
+  fi
+  journalctl -u lighttpd -n 20 --no-pager >&2 2>/dev/null || true
+  warn "Common causes: Pi-hole on port 80, duplicate lighttpd modules, or port conflicts"
+  warn "Skyaware map on :8080 will be unavailable, but Pi-Sky will still work"
+  PI_SKY_DUMP1090_URL="/run/dump1090-fa/aircraft.json"
+  return 1
+}
+
 configure_dump1090_fa() {
   local conf="/etc/default/dump1090-fa"
   [ -f "$conf" ] || die "Missing $conf after dump1090-fa install"
@@ -139,17 +183,11 @@ configure_dump1090_fa() {
     fi
   fi
 
-  # Ensure skyaware lighttpd configs are enabled (serves /data/aircraft.json on :8080)
-  mkdir -p /etc/lighttpd/conf-enabled
-  for c in 88-dump1090-fa-statcache 89-skyaware; do
-    if [ -f "/etc/lighttpd/conf-available/${c}.conf" ]; then
-      ln -sf "../conf-available/${c}.conf" "/etc/lighttpd/conf-enabled/${c}.conf"
-    fi
-  done
-
   systemctl daemon-reload
-  systemctl enable dump1090-fa.service lighttpd.service
-  systemctl restart dump1090-fa.service lighttpd.service
+  systemctl enable dump1090-fa.service
+  systemctl restart dump1090-fa.service
+  setup_lighttpd_for_dump1090 || true
+  export PI_SKY_DUMP1090_URL
 }
 
 resolve_receiver_coords() {
@@ -249,10 +287,14 @@ write_config_json() {
   log "Creating config.json (coordinates from $source)"
   python3 - <<PY
 import json
+import os
 from pathlib import Path
 
 template = json.loads(Path("$PI_SKY_DIR/config_template.json").read_text(encoding="utf-8"))
-template["dump1090_url"] = "http://127.0.0.1:8080/data/aircraft.json"
+template["dump1090_url"] = os.environ.get(
+    "PI_SKY_DUMP1090_URL",
+    "http://127.0.0.1:8080/data/aircraft.json",
+)
 template["receiver_lat"] = float("$lat")
 template["receiver_lon"] = float("$lon")
 Path("$PI_SKY_DIR/config.json").write_text(
@@ -301,8 +343,11 @@ EOF
 
 wait_for_dump1090() {
   log "Waiting for dump1090 aircraft.json"
-  local i url="http://127.0.0.1:8080/data/aircraft.json"
+  local i url="${PI_SKY_DUMP1090_URL:-http://127.0.0.1:8080/data/aircraft.json}"
   for i in $(seq 1 30); do
+    if [[ "$url" == /* ]] && [ -f "$url" ]; then
+      return 0
+    fi
     if curl -fsS --connect-timeout 2 --max-time 4 "$url" >/dev/null 2>&1; then
       return 0
     fi
@@ -342,7 +387,7 @@ print_summary() {
 ============================================================
 
  Pi-Sky directory : $PI_SKY_DIR
- dump1090 JSON    : http://127.0.0.1:8080/data/aircraft.json
+ dump1090 source  : ${PI_SKY_DUMP1090_URL:-http://127.0.0.1:8080/data/aircraft.json}
  Pi-Sky map UI    : http://${ip}:${port}/index-maps.html
  Config page      : http://${ip}:${port}/config.html
 
