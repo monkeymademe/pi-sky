@@ -12,8 +12,9 @@ import time
 import asyncio
 import threading
 import warnings
-import cgi
 import re
+from email import message_from_bytes
+from email.policy import default
 import gzip
 import zipfile
 from datetime import datetime
@@ -517,6 +518,51 @@ def load_config():
         print("     - Adjust other settings as needed")
         print("\n" + "=" * 80)
         sys.exit(1)
+
+def _parse_multipart_upload(handler, field_name='file'):
+    """
+    Parse a multipart/form-data POST and return (filename, bytes) for field_name.
+
+    Uses stdlib email parsing (cgi.FieldStorage was removed in Python 3.13).
+    """
+    ctype = handler.headers.get('Content-Type', '')
+    if 'multipart/form-data' not in ctype:
+        return None, None, 'Expected multipart/form-data'
+
+    try:
+        content_length = int(handler.headers.get('Content-Length', '0'))
+    except ValueError:
+        return None, None, 'Invalid Content-Length'
+
+    if content_length <= 0:
+        return None, None, 'Empty request body'
+
+    body = handler.rfile.read(content_length)
+    if not body:
+        return None, None, 'Empty request body'
+
+    try:
+        msg = message_from_bytes(
+            b'Content-Type: ' + ctype.encode('utf-8', errors='replace') + b'\r\n\r\n' + body,
+            policy=default,
+        )
+    except Exception as exc:
+        return None, None, f'Could not parse upload: {exc}'
+
+    for part in msg.iter_parts():
+        if part.get_content_disposition() != 'form-data':
+            continue
+        name = part.get_param('name', header='content-disposition')
+        if name != field_name:
+            continue
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            return None, None, 'Uploaded file is empty'
+        filename = part.get_filename() or field_name
+        return os.path.basename(filename), payload, None
+
+    return None, None, 'No file uploaded'
+
 
 def _dump1090_local_path(dump1090_url):
     """Return a local filesystem path for dump1090 aircraft.json, or None."""
@@ -3195,24 +3241,15 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({'error': 'Expected multipart/form-data'}).encode())
                 return
 
-            fs = cgi.FieldStorage(
-                fp=self.rfile,
-                headers=self.headers,
-                environ={
-                    'REQUEST_METHOD': 'POST',
-                    'CONTENT_TYPE': ctype,
-                },
-            )
-
-            file_item = fs['file'] if 'file' in fs else None
-            if file_item is None or getattr(file_item, 'file', None) is None:
+            original_name, content, upload_error = _parse_multipart_upload(self, field_name='file')
+            if upload_error:
                 self.send_response(400)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({'error': 'No file uploaded'}).encode())
+                self.wfile.write(json.dumps({'error': upload_error}).encode())
                 return
 
-            original_name = os.path.basename(file_item.filename or 'mictronics_aircraft_db.txt')
+            original_name = original_name or 'mictronics_aircraft_db.txt'
             ext = os.path.splitext(original_name)[1] or '.txt'
             upload_dir = os.path.join('data', 'mictronics')
             os.makedirs(upload_dir, exist_ok=True)
@@ -3220,7 +3257,6 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             target_name = f"mictronics_aircraft_db{ext}"
             target_path = os.path.join(upload_dir, target_name)
 
-            content = file_item.file.read()
             if not content:
                 self.send_response(400)
                 self.send_header('Content-Type', 'application/json')
