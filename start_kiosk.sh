@@ -25,7 +25,7 @@ else
 fi
 
 # Construct the URL
-URL="http://${HTTP_HOST}:${HTTP_PORT}/index-maps.html"
+URL="http://${HTTP_HOST}:${HTTP_PORT}/livemap"
 
 echo "Starting Pi-Sky in kiosk mode..."
 echo "URL: $URL"

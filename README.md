@@ -197,12 +197,12 @@ If you use a venv, activate it first, or call `./venv/bin/python3` as above. Wit
 
 | Page | Path |
 |------|------|
-| Map (main) | `http://<host>:<port>/index-maps.html` |
-| Card / list UI | `http://<host>:<port>/index.html` |
-| Replay / history | `http://<host>:<port>/index-replay.html` |
-| Settings | `http://<host>:<port>/config.html` |
+| Home (card / list UI) | `http://<host>:<port>/` |
+| Live map | `http://<host>:<port>/livemap` |
+| History / replay | `http://<host>:<port>/history` |
+| Settings | `http://<host>:<port>/config` |
 
-Example for a Pi on the LAN with default template port: `http://192.168.1.10:5050/index-maps.html`.
+Legacy filenames (`index.html`, `index-maps.html`, `index-replay.html`) still work. Example: `http://192.168.1.10:5050/livemap`.
 
 **systemd (optional)** — install and enable the bundled unit so Pi-Sky starts at boot (expects `/home/pi/pi-sky` and `venv`):
 

@@ -366,7 +366,7 @@ wait_for_pi_sky() {
       return 0
     fi
     # Server may return non-200 on /events during SSE; try index page instead
-    if curl -fsS --connect-timeout 2 --max-time 4 "http://127.0.0.1:${port}/index-maps.html" -o /dev/null 2>/dev/null; then
+    if curl -fsS --connect-timeout 2 --max-time 4 "http://127.0.0.1:${port}/livemap" -o /dev/null 2>/dev/null; then
       return 0
     fi
     sleep 1
@@ -388,8 +388,10 @@ print_summary() {
 
  Pi-Sky directory : $PI_SKY_DIR
  dump1090 source  : ${PI_SKY_DUMP1090_URL:-http://127.0.0.1:8080/data/aircraft.json}
- Pi-Sky map UI    : http://${ip}:${port}/index-maps.html
- Config page      : http://${ip}:${port}/config.html
+ Pi-Sky home      : http://${ip}:${port}/
+ Pi-Sky live map  : http://${ip}:${port}/livemap
+ Pi-Sky history   : http://${ip}:${port}/history
+ Config page      : http://${ip}:${port}/config
 
  Services:
    sudo systemctl status dump1090-fa

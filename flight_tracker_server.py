@@ -1788,11 +1788,34 @@ def process_aircraft_data(aircraft_data):
         'flight_count': len(enriched_flights)
     }
 # HTTP server
+# Friendly page routes (URL path -> file under web/)
+PAGE_ROUTES = {
+    '/': 'index.html',
+    '/home': 'index.html',
+    '/livemap': 'index-maps.html',
+    '/history': 'index-replay.html',
+    '/config': 'config.html',
+}
+
+
 class FlightHTTPHandler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=os.path.join(os.path.dirname(__file__), 'web'), **kwargs)
+
+    def _apply_page_route(self):
+        """Map friendly URLs (/livemap, /history, /) to HTML files."""
+        parsed = urlparse(self.path)
+        path = (parsed.path or '/').rstrip('/') or '/'
+        path_lc = path.lower()
+        target = PAGE_ROUTES.get(path_lc)
+        if not target:
+            return False
+        self.path = '/' + target
+        if parsed.query:
+            self.path += '?' + parsed.query
+        return True
 
     def do_GET(self):
         # Parse path and query string (for routes that need exact match)
@@ -1817,6 +1840,7 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
         elif path_lc == '/api/dump1090/aircraft.json':
             self.handle_dump1090_passthrough()
         else:
+            self._apply_page_route()
             super().do_GET()
     
     def do_POST(self):
@@ -3444,7 +3468,7 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
         # Kiosk browsers (Chromium) cache SVG/CSS aggressively; avoid stale UI after deploys
         path = self.path.split('?', 1)[0]
         if not path.startswith('/api') and path != '/events':
-            if path in ('/', '/index.html') or path.endswith(
+            if path in ('/', '/home', '/livemap', '/history', '/config', '/index.html') or path.endswith(
                 ('.html', '.htm', '.css', '.js', '.svg', '.ico')
             ) or path.startswith('/assets/'):
                 self.send_header('Cache-Control', 'no-cache, must-revalidate')
@@ -3465,7 +3489,7 @@ def run_http_server(host, port):
     """Run HTTP server in a separate thread"""
     with ThreadingFlightHTTPServer((host, port), FlightHTTPHandler) as httpd:
         print(f"HTTP server running on http://{host}:{port}")
-        print(f"Open http://{host}:{port}/index-maps.html in your browser")
+        print(f"Open http://{host}:{port}/livemap in your browser")
         httpd.serve_forever()
 
 async def flight_data_loop(config):
