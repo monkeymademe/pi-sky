@@ -477,6 +477,67 @@
         .flight-card.expanded .expand-icon {
             transform: rotate(180deg);
         }
+
+        .enhancement-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .enhancement-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.72em;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            line-height: 1.3;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .enhancement-pill.none {
+            background: rgba(255, 255, 255, 0.14);
+            color: rgba(255, 255, 255, 0.82);
+            border-color: rgba(255, 255, 255, 0.18);
+        }
+
+        .enhancement-pill.adsblol {
+            background: rgba(90, 122, 138, 0.28);
+            color: #e8f1f5;
+            border-color: rgba(139, 168, 184, 0.45);
+        }
+
+        .enhancement-pill.opensky {
+            background: rgba(61, 80, 102, 0.42);
+            color: #f0f4f8;
+            border-color: rgba(201, 212, 220, 0.35);
+        }
+
+        .flight-details .enhancement-pills {
+            margin-top: 0;
+            margin-bottom: 14px;
+        }
+
+        .flight-details .enhancement-pill.none {
+            background: rgba(61, 80, 102, 0.08);
+            color: var(--text-secondary);
+            border-color: rgba(61, 80, 102, 0.16);
+        }
+
+        .flight-details .enhancement-pill.adsblol {
+            background: rgba(90, 122, 138, 0.14);
+            color: var(--palette-2);
+            border-color: rgba(90, 122, 138, 0.28);
+        }
+
+        .flight-details .enhancement-pill.opensky {
+            background: rgba(61, 80, 102, 0.12);
+            color: var(--palette-1);
+            border-color: rgba(61, 80, 102, 0.22);
+        }
         
         .flight-header {
             background: var(--card-header-bg);
@@ -2961,6 +3022,26 @@
         }
         
         // Render flights list grouped by day
+        function renderEnhancementPills(sources) {
+            const normalized = Array.isArray(sources)
+                ? sources.map(s => String(s).trim()).filter(Boolean)
+                : [];
+            if (normalized.length === 0) {
+                return '<div class="enhancement-pills"><span class="enhancement-pill none">no enhancement</span></div>';
+            }
+            const pills = normalized.map(source => {
+                const lower = source.toLowerCase();
+                let cssClass = 'none';
+                if (lower === 'adsb.lol') {
+                    cssClass = 'adsblol';
+                } else if (lower === 'opensky network') {
+                    cssClass = 'opensky';
+                }
+                return `<span class="enhancement-pill ${cssClass}">${source}</span>`;
+            }).join('');
+            return `<div class="enhancement-pills">${pills}</div>`;
+        }
+
         function renderFlights() {
             const container = document.getElementById('flightsContainer');
             syncFilterStateFromDom();
@@ -3022,6 +3103,7 @@
                                                 ${flight.callsign || 'Unidentified'} (${flight.aircraft_icao})
                                             </h3>
                                             ${flight.aircraft && flight.aircraft.registration ? `<div style="margin-top: 5px; font-size: 0.9em; opacity: 0.9;">${flight.aircraft.registration} - ${flight.aircraft.model || 'Unknown'}</div>` : ''}
+                                            ${renderEnhancementPills(flight.enhancement_sources)}
                                         </div>
                                         <div class="flight-info">
                                             ${flight.origin && flight.destination ? `
@@ -3123,6 +3205,7 @@
                 body.innerHTML = `
                     <div class="flight-content-row">
                         <div class="flight-details">
+                            ${renderEnhancementPills(flight.enhancement_sources)}
                             ${flight.origin && flight.destination ? `
                                 <div class="flight-route-display">
                                     <div class="route-section">

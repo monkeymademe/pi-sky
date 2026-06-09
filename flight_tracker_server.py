@@ -40,9 +40,15 @@ from flight_info import (
     get_city_name_from_coordinates,
     infer_is_helicopter,
     sanitize_aircraft_label_for_display,
+    opensky_bounding_box,
+    fetch_opensky_states,
+    fetch_opensky_flights_interval,
+    build_opensky_flight_index,
+    parse_opensky_flight_to_route,
+    OPENSKY_SOURCE_LABEL,
 )
 from airline_logos import get_airline_info
-from flight_db import FlightDatabase
+from flight_db import FlightDatabase, normalize_enhancement_sources
 
 # Try to import Inky display function
 try:
@@ -73,6 +79,132 @@ flight_db = None
 SSE_KEEPALIVE_INTERVAL = 15  # seconds between keep-alive comments
 MICROTONICS_DIR = os.path.join('data', 'mictronics')
 MICROTONICS_LOOKUP_PATH = os.path.join(MICROTONICS_DIR, 'lookup.json')
+
+ADSBLOL_SOURCE_LABEL = 'adsb.lol'
+ROUTE_ENRICHMENT_FIELDS = (
+    'origin', 'destination', 'origin_country', 'destination_country',
+    'origin_city', 'destination_city', 'origin_airport_name', 'destination_airport_name',
+    'full_route', 'full_route_iata', 'is_round_trip',
+)
+
+
+def _record_enhancement_source(mem, source):
+    """Track which external service contributed enrichment for a flight."""
+    if not mem or not source:
+        return
+    sources = mem.setdefault('enhancement_sources', [])
+    if source not in sources:
+        sources.append(source)
+
+
+def _merge_route_fields(mem, route_info, only_fill_missing=True):
+    """Merge route enrichment into flight memory; return True if anything changed."""
+    if not mem or not route_info:
+        return False
+    changed = False
+    for key in ROUTE_ENRICHMENT_FIELDS:
+        val = route_info.get(key)
+        if val is None or val == '':
+            continue
+        if only_fill_missing and mem.get(key) not in (None, '', False):
+            continue
+        if mem.get(key) != val:
+            mem[key] = val
+            changed = True
+    if route_info.get('source'):
+        mem['source'] = route_info.get('source')
+    return changed
+
+
+def _flight_info_from_memory(mem):
+    """Build a flight_info dict for DB writes from flight memory."""
+    if not mem:
+        return {}
+    return {
+        'origin': mem.get('origin'),
+        'destination': mem.get('destination'),
+        'origin_country': mem.get('origin_country'),
+        'destination_country': mem.get('destination_country'),
+        'origin_city': mem.get('origin_city'),
+        'destination_city': mem.get('destination_city'),
+        'origin_airport_name': mem.get('origin_airport_name'),
+        'destination_airport_name': mem.get('destination_airport_name'),
+        'airline_code': mem.get('airline_code'),
+        'airline_name': mem.get('airline_name'),
+        'full_route': mem.get('full_route'),
+        'full_route_iata': mem.get('full_route_iata'),
+        'is_round_trip': mem.get('is_round_trip', False),
+        'enhancement_sources': mem.get('enhancement_sources', []),
+    }
+
+
+def run_opensky_enrichment(config):
+    """Poll OpenSky once per minute and enrich tracked flights with matched data."""
+    global flight_memory, flight_db
+
+    osn = config.get('opensky_network') or {}
+    if not osn.get('enabled'):
+        return
+
+    client_id = (osn.get('client_id') or '').strip()
+    client_secret = (osn.get('client_secret') or '').strip()
+    if not client_id or not client_secret:
+        return
+
+    tracked = {
+        icao.lower(): icao
+        for icao in flight_memory.keys()
+        if icao and icao.lower() not in ('unknown', 'test01')
+    }
+    if not tracked:
+        return
+
+    receiver_lat = config.get('receiver_lat', 52.40585)
+    receiver_lon = config.get('receiver_lon', 13.55214)
+    radius_km = config.get('map_generation', {}).get('max_distance_km', 500)
+
+    try:
+        lamin, lomin, lamax, lomax = opensky_bounding_box(receiver_lat, receiver_lon, radius_km)
+        states = fetch_opensky_states(client_id, client_secret, lamin, lomin, lamax, lomax)
+
+        end_ts = int(time.time())
+        begin_ts = end_ts - 7200
+        flights = fetch_opensky_flights_interval(client_id, client_secret, begin_ts, end_ts)
+        flight_index = build_opensky_flight_index(flights)
+
+        enriched_count = 0
+        for icao_lower, actual_icao in tracked.items():
+            mem = flight_memory.get(actual_icao)
+            if not mem:
+                continue
+
+            opensky_contributed = False
+
+            state = states.get(icao_lower)
+            if state and state.get('callsign') and not mem.get('callsign'):
+                mem['callsign'] = state['callsign']
+                opensky_contributed = True
+
+            os_flight = flight_index.get(icao_lower)
+            if os_flight:
+                route_info = parse_opensky_flight_to_route(os_flight)
+                if route_info and _merge_route_fields(mem, route_info, only_fill_missing=True):
+                    opensky_contributed = True
+
+            if not opensky_contributed:
+                continue
+
+            _record_enhancement_source(mem, OPENSKY_SOURCE_LABEL)
+            enriched_count += 1
+
+            flight_id = mem.get('flight_id')
+            if flight_db and flight_id:
+                flight_db.update_flight_info(flight_id, _flight_info_from_memory(mem))
+
+        if enriched_count:
+            print(f"🌐 OpenSky enrichment updated {enriched_count} tracked flight(s)")
+    except Exception as e:
+        print(f"⚠️  OpenSky enrichment error: {e}")
 
 
 def _normalize_icao24(value):
@@ -444,6 +576,22 @@ def validate_config(config):
             return 'mictronics_aircraft_db.last_imported_at must be a string or null'
         if 'record_count' in mdb and mdb['record_count'] is not None and not isinstance(mdb['record_count'], int):
             return 'mictronics_aircraft_db.record_count must be an integer or null'
+
+    if 'opensky_network' in config:
+        osn = config['opensky_network']
+        if not isinstance(osn, dict):
+            return 'opensky_network must be an object'
+        if 'enabled' in osn and not isinstance(osn['enabled'], bool):
+            return 'opensky_network.enabled must be a boolean'
+        if 'client_id' in osn and not isinstance(osn['client_id'], str):
+            return 'opensky_network.client_id must be a string'
+        if 'client_secret' in osn and not isinstance(osn['client_secret'], str):
+            return 'opensky_network.client_secret must be a string'
+        if osn.get('enabled') is True:
+            if not (osn.get('client_id') or '').strip():
+                return 'opensky_network.client_id is required when OpenSky Network is enabled'
+            if not (osn.get('client_secret') or '').strip():
+                return 'opensky_network.client_secret is required when OpenSky Network is enabled'
     
     return None  # Valid
 
@@ -501,6 +649,14 @@ def load_config():
                 config['mictronics_aircraft_db']['last_imported_at'] = None
             if 'record_count' not in config['mictronics_aircraft_db']:
                 config['mictronics_aircraft_db']['record_count'] = None
+            if 'opensky_network' not in config or not isinstance(config.get('opensky_network'), dict):
+                config['opensky_network'] = {}
+            if 'enabled' not in config['opensky_network']:
+                config['opensky_network']['enabled'] = False
+            if 'client_id' not in config['opensky_network']:
+                config['opensky_network']['client_id'] = ''
+            if 'client_secret' not in config['opensky_network']:
+                config['opensky_network']['client_secret'] = ''
             # Legacy: map_generation.enabled was merged into inky.enabled
             if isinstance(config.get('map_generation'), dict):
                 config['map_generation'].pop('enabled', None)
@@ -1176,6 +1332,7 @@ def process_aircraft_data(aircraft_data):
                 'aircraft_type': None,
                 'aircraft_registration': None,
                 'is_helicopter': None,
+                'enhancement_sources': [],
                 'last_distance': distance,  # Store initial distance for adaptive timeout
                 'position_history': []  # Store recent positions for round-trip route analysis
             }
@@ -1226,6 +1383,7 @@ def process_aircraft_data(aircraft_data):
                                 flight_memory[icao]['full_route'] = route_info.get('full_route')
                                 flight_memory[icao]['full_route_iata'] = route_info.get('full_route_iata')
                                 flight_memory[icao]['is_round_trip'] = route_info.get('is_round_trip', False)
+                                _record_enhancement_source(flight_memory[icao], ADSBLOL_SOURCE_LABEL)
                                 # Log successful route lookup (first time only)
                                 if not hasattr(process_aircraft_data, '_route_success_logged'):
                                     process_aircraft_data._route_success_logged = set()
@@ -1271,6 +1429,7 @@ def process_aircraft_data(aircraft_data):
                         flight_memory[icao]['aircraft_model'] = aircraft_info.get('model')
                         flight_memory[icao]['aircraft_type'] = aircraft_info.get('type')
                         flight_memory[icao]['aircraft_registration'] = aircraft_info.get('registration')
+                        _record_enhancement_source(flight_memory[icao], ADSBLOL_SOURCE_LABEL)
                         
                 except Exception as e:
                     pass  # Silently fail - aircraft info is optional
@@ -1359,6 +1518,7 @@ def process_aircraft_data(aircraft_data):
                             flight_memory[icao]['full_route_iata'] = route_info.get('full_route_iata')
                             flight_memory[icao]['is_round_trip'] = route_info.get('is_round_trip', False)
                             flight_memory[icao]['lookup_error'] = None  # Clear error
+                            _record_enhancement_source(flight_memory[icao], ADSBLOL_SOURCE_LABEL)
                             # Log successful route lookup
                             if not hasattr(process_aircraft_data, '_route_success_logged'):
                                 process_aircraft_data._route_success_logged = set()
@@ -1514,7 +1674,8 @@ def process_aircraft_data(aircraft_data):
                             'airline_name': enriched.get('airline_name'),
                             'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
                             'full_route_iata': enriched.get('full_route_iata') or flight_memory[icao].get('full_route_iata'),
-                            'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False)
+                            'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False),
+                            'enhancement_sources': flight_memory[icao].get('enhancement_sources', []),
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
                         flight_memory[icao]['flight_id'] = flight_id
@@ -1558,7 +1719,8 @@ def process_aircraft_data(aircraft_data):
                             'airline_name': enriched.get('airline_name'),
                             'full_route': enriched.get('full_route') or flight_memory[icao].get('full_route'),
                             'full_route_iata': enriched.get('full_route_iata') or flight_memory[icao].get('full_route_iata'),
-                            'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False)
+                            'is_round_trip': enriched.get('is_round_trip') or flight_memory[icao].get('is_round_trip', False),
+                            'enhancement_sources': flight_memory[icao].get('enhancement_sources', []),
                         }
                         flight_id = flight_db.start_flight(icao, callsign, flight_info)
                         flight_memory[icao]['flight_id'] = flight_id
@@ -1612,6 +1774,9 @@ def process_aircraft_data(aircraft_data):
                                 flight_info['airline_code'] = enriched.get('airline_code')
                             if not flight_info.get('airline_name'):
                                 flight_info['airline_name'] = enriched.get('airline_name')
+
+                        if mem.get('enhancement_sources'):
+                            flight_info['enhancement_sources'] = mem.get('enhancement_sources')
                         
                         if flight_info:
                             flight_db.update_flight_info(flight_id, flight_info)
@@ -2768,7 +2933,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                     'position_count': position_count,
                     'full_route': flight.get('full_route'),
                     'full_route_iata': flight.get('full_route_iata'),
-                    'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False
+                    'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False,
+                    'enhancement_sources': normalize_enhancement_sources(flight.get('enhancement_sources')),
                 }
                 
                 self.send_response(200)
@@ -2878,7 +3044,8 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
                         'position_count': position_count,
                         'full_route': flight.get('full_route'),
                         'full_route_iata': flight.get('full_route_iata'),
-                        'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False
+                        'is_round_trip': bool(flight.get('is_round_trip')) if flight.get('is_round_trip') is not None else False,
+                        'enhancement_sources': normalize_enhancement_sources(flight.get('enhancement_sources')),
                     }
                     flight_list.append(flight_data)
                 
@@ -3199,6 +3366,22 @@ class FlightHTTPHandler(SimpleHTTPRequestHandler):
             
             body = self.rfile.read(content_length)
             new_config = json.loads(body.decode('utf-8'))
+
+            # Preserve OpenSky client secret when the config form leaves it blank
+            try:
+                existing_config = load_config()
+                existing_osn = existing_config.get('opensky_network') or {}
+                new_osn = new_config.get('opensky_network') or {}
+                if not isinstance(new_osn, dict):
+                    new_osn = {}
+                if not (new_osn.get('client_secret') or '').strip():
+                    preserved_secret = (existing_osn.get('client_secret') or '').strip()
+                    if preserved_secret:
+                        if 'opensky_network' not in new_config or not isinstance(new_config.get('opensky_network'), dict):
+                            new_config['opensky_network'] = {}
+                        new_config['opensky_network']['client_secret'] = preserved_secret
+            except Exception as e:
+                print(f"⚠️  Warning: Could not preserve OpenSky client secret: {e}")
             
             # Validate configuration
             validation_error = validate_config(new_config)
@@ -3629,6 +3812,13 @@ async def flight_data_loop(config):
                 print(f"⚠️  Database cleanup error: {e}")
                 import traceback
                 traceback.print_exc()
+        
+        # OpenSky Network enrichment (every 60 seconds)
+        if not hasattr(flight_data_loop, '_last_opensky_time'):
+            flight_data_loop._last_opensky_time = 0
+        if current_time - flight_data_loop._last_opensky_time >= 60:
+            flight_data_loop._last_opensky_time = current_time
+            run_opensky_enrichment(config)
         
         await asyncio.sleep(1)  # Update every 1 second
 

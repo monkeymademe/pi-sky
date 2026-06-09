@@ -18,6 +18,41 @@ _PEER_JUNK_TYPES = frozenset({
     'twr', 'gnd', 'ground', 'unknown', 'unused', 'ship', 'rail', 'tbd',
 })
 
+
+def normalize_enhancement_sources(value):
+    """Return a deduplicated list of enhancement source labels."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            s = str(item).strip()
+            if s and s not in out:
+                out.append(s)
+        return out
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return normalize_enhancement_sources(parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return [text]
+    return []
+
+
+def merge_enhancement_sources(existing, new_sources):
+    """Merge source labels preserving order."""
+    merged = normalize_enhancement_sources(existing)
+    for source in normalize_enhancement_sources(new_sources):
+        if source not in merged:
+            merged.append(source)
+    return merged
+
+
 class FlightDatabase:
     """SQLite database for storing flight data"""
     
@@ -593,6 +628,10 @@ class FlightDatabase:
             cursor.execute('ALTER TABLE aircraft ADD COLUMN is_helicopter INTEGER')
         except sqlite3.OperationalError:
             pass  # Column already exists
+        try:
+            cursor.execute('ALTER TABLE flights ADD COLUMN enhancement_sources TEXT')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_aircraft ON flights(aircraft_icao)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_flights_callsign ON flights(callsign)')
@@ -937,8 +976,9 @@ class FlightDatabase:
                     {self.first_seen_col}, status,
                     full_route, full_route_iata, is_round_trip,
                     origin_city, destination_city,
-                    origin_airport_name, destination_airport_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    origin_airport_name, destination_airport_name,
+                    enhancement_sources
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 icao,
                 callsign,
@@ -956,7 +996,8 @@ class FlightDatabase:
                 info.get('origin_city'),
                 info.get('destination_city'),
                 info.get('origin_airport_name'),
-                info.get('destination_airport_name')
+                info.get('destination_airport_name'),
+                json.dumps(normalize_enhancement_sources(info.get('enhancement_sources')))
             ))
             
             flight_id = cursor.lastrowid
@@ -1002,6 +1043,20 @@ class FlightDatabase:
         with self.lock:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+
+            enhancement_sources_json = None
+            if 'enhancement_sources' in flight_info:
+                cursor.execute(
+                    'SELECT enhancement_sources FROM flights WHERE id = ?',
+                    (flight_id,),
+                )
+                row = cursor.fetchone()
+                existing_sources = row[0] if row else None
+                merged = merge_enhancement_sources(
+                    existing_sources,
+                    flight_info.get('enhancement_sources'),
+                )
+                enhancement_sources_json = json.dumps(merged)
             
             cursor.execute('''
                 UPDATE flights 
@@ -1017,7 +1072,8 @@ class FlightDatabase:
                     origin_city = COALESCE(?, origin_city),
                     destination_city = COALESCE(?, destination_city),
                     origin_airport_name = COALESCE(?, origin_airport_name),
-                    destination_airport_name = COALESCE(?, destination_airport_name)
+                    destination_airport_name = COALESCE(?, destination_airport_name),
+                    enhancement_sources = COALESCE(?, enhancement_sources)
                 WHERE id = ?
             ''', (
                 flight_info.get('origin'),
@@ -1033,11 +1089,18 @@ class FlightDatabase:
                 flight_info.get('destination_city'),
                 flight_info.get('origin_airport_name'),
                 flight_info.get('destination_airport_name'),
+                enhancement_sources_json,
                 flight_id
             ))
             
             conn.commit()
             conn.close()
+
+    def add_enhancement_sources(self, flight_id, sources):
+        """Merge enhancement source labels onto a flight record."""
+        if not flight_id or not sources:
+            return
+        self.update_flight_info(flight_id, {'enhancement_sources': sources})
 
     def backfill_flight_airport_enrichment(self):
         """
@@ -1257,6 +1320,9 @@ class FlightDatabase:
                 if self.last_seen_col == 'end_time' and 'end_time' in flight_dict:
                     flight_dict['last_seen'] = flight_dict.pop('end_time')
                 last_pos_ts = flight_dict.pop('last_position_ts', None)
+                flight_dict['enhancement_sources'] = normalize_enhancement_sources(
+                    flight_dict.get('enhancement_sources')
+                )
                 # DB leaves last_seen NULL while flight is "active"; expose last position time for the UI
                 if flight_dict.get('last_seen') is None and last_pos_ts:
                     flight_dict['last_seen'] = last_pos_ts
@@ -1311,6 +1377,9 @@ class FlightDatabase:
                 if self.last_seen_col == 'end_time' and 'end_time' in flight_dict:
                     flight_dict['last_seen'] = flight_dict.pop('end_time')
                 last_pos_ts = flight_dict.pop('last_position_ts', None)
+                flight_dict['enhancement_sources'] = normalize_enhancement_sources(
+                    flight_dict.get('enhancement_sources')
+                )
                 if flight_dict.get('last_seen') is None and last_pos_ts:
                     flight_dict['last_seen'] = last_pos_ts
                 return flight_dict

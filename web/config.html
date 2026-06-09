@@ -1118,6 +1118,42 @@
                     </div>
                 </div>
 
+                <!-- OpenSky Network -->
+                <div class="section">
+                    <div class="section-header collapsed" onclick="toggleSection(this)">
+                        OpenSky Network
+                    </div>
+                    <div class="section-content collapsed">
+                        <div class="form-group full-width">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label for="opensky_enabled">Enable OpenSky Network API credentials</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="opensky_enabled" name="opensky_enabled">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <span class="help-text">
+                                OpenSky uses OAuth2 <strong>client credentials</strong> (not your website login).
+                                Create an API client on your
+                                <a href="https://opensky-network.org/my-opensky/account" target="_blank" rel="noopener noreferrer">OpenSky account page</a>
+                                to get a <code>client_id</code> and <code>client_secret</code>.
+                            </span>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="opensky_client_id">Client ID</label>
+                            <input type="text" id="opensky_client_id" name="opensky_client_id" autocomplete="off" spellcheck="false">
+                            <span class="help-text">API client ID (often ends in <code>-api-client</code>)</span>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="opensky_client_secret">Client Secret</label>
+                            <input type="password" id="opensky_client_secret" name="opensky_client_secret" autocomplete="new-password" spellcheck="false" placeholder="Leave blank to keep existing secret">
+                            <span class="help-text">Stored in <code>config.json</code>. Leave blank when saving to keep the current secret.</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Mictronics Aircraft Reference -->
                 <div class="section">
                     <div class="section-header collapsed" onclick="toggleSection(this)">
@@ -1689,6 +1725,7 @@
                     'clear_skies_enabled', 'clear_skies_airport',
                     'db_enabled', 'db_path', 'db_snapshot_interval', 'db_cleanup_days',
                     'mictronics_enabled', 'mictronics_last_uploaded', 'mictronics_last_imported', 'mictronics_record_count',
+                    'opensky_enabled', 'opensky_client_id', 'opensky_client_secret',
                     'touch_scroll_helpers_height_px', 'touch_scroll_helpers_width_px', 'touch_scroll_helpers_opacity', 'touch_scroll_helpers_color',
                     'touch_scroll_helpers_auto_hide_enabled', 'touch_scroll_helpers_button_alignment'
                 ];
@@ -1789,6 +1826,18 @@
                 const mdb = config.mictronics_aircraft_db || {};
                 setChecked('mictronics_enabled', mdb.enabled === true);
                 updateMictronicsMetaDisplay(mdb);
+
+                // OpenSky Network credentials
+                const osn = config.opensky_network || {};
+                setChecked('opensky_enabled', osn.enabled === true);
+                setValue('opensky_client_id', osn.client_id || '');
+                const openskySecretEl = document.getElementById('opensky_client_secret');
+                if (openskySecretEl) {
+                    openskySecretEl.value = '';
+                    openskySecretEl.placeholder = (osn.client_secret || '').trim()
+                        ? 'Secret saved — leave blank to keep'
+                        : 'Leave blank to keep existing secret';
+                }
 
                 console.log('[loadConfig] All fields populated');
                 
@@ -1897,6 +1946,11 @@
                     last_uploaded_at: null,
                     last_imported_at: null,
                     record_count: null
+                },
+                opensky_network: {
+                    enabled: document.getElementById('opensky_enabled').checked,
+                    client_id: (document.getElementById('opensky_client_id').value || '').trim(),
+                    client_secret: (document.getElementById('opensky_client_secret').value || '').trim()
                 }
             };
 

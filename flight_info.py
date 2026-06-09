@@ -1039,7 +1039,182 @@ def get_flight_route(icao, callsign=None, lat=None, lon=None, position_history=N
     
     return get_flight_route_adsblol(callsign, icao, lat, lon, position_history=position_history)
 
-if __name__ == '__main__':
+
+# --- OpenSky Network API (OAuth2 client credentials) ---
+
+OPENSKY_API_BASE = 'https://opensky-network.org/api'
+OPENSKY_TOKEN_URL = (
+    'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token'
+)
+OPENSKY_SOURCE_LABEL = 'opensky network'
+
+_opensky_token_cache = {
+    'token': None,
+    'expires_at': 0.0,
+}
+
+
+def _opensky_auth_headers(client_id, client_secret):
+    """Return Authorization headers with a valid Bearer token."""
+    now = time.time()
+    if (
+        _opensky_token_cache.get('token')
+        and _opensky_token_cache.get('expires_at', 0) > now + 30
+    ):
+        return {'Authorization': f"Bearer {_opensky_token_cache['token']}"}
+
+    response = requests.post(
+        OPENSKY_TOKEN_URL,
+        data={
+            'grant_type': 'client_credentials',
+            'client_id': client_id,
+            'client_secret': client_secret,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+    data = response.json()
+    token = data.get('access_token')
+    if not token:
+        raise ValueError('OpenSky token response missing access_token')
+    expires_in = int(data.get('expires_in', 1800))
+    _opensky_token_cache['token'] = token
+    _opensky_token_cache['expires_at'] = now + max(60, expires_in - 60)
+    return {'Authorization': f'Bearer {token}'}
+
+
+def opensky_bounding_box(lat, lon, radius_km=500):
+    """Return (lamin, lomin, lamax, lomax) for OpenSky /states/all."""
+    lat_delta = radius_km / 111.0
+    cos_lat = cos(radians(lat)) if lat else 1.0
+    cos_lat = max(abs(cos_lat), 0.01)
+    lon_delta = radius_km / (111.0 * cos_lat)
+    return (lat - lat_delta, lon - lon_delta, lat + lat_delta, lon + lon_delta)
+
+
+def _parse_opensky_state_vector(state):
+    """Parse one OpenSky state vector array into a dict."""
+    if not isinstance(state, (list, tuple)) or len(state) < 2:
+        return None
+    icao = (state[0] or '').strip().lower()
+    if not icao:
+        return None
+    callsign = (state[1] or '').strip() or None
+    return {
+        'icao24': icao,
+        'callsign': callsign,
+        'origin_country': state[2] if len(state) > 2 else None,
+        'longitude': state[5] if len(state) > 5 else None,
+        'latitude': state[6] if len(state) > 6 else None,
+        'baro_altitude': state[7] if len(state) > 7 else None,
+        'on_ground': state[8] if len(state) > 8 else None,
+        'velocity': state[9] if len(state) > 9 else None,
+        'true_track': state[10] if len(state) > 10 else None,
+        'squawk': state[14] if len(state) > 14 else None,
+        'category': state[17] if len(state) > 17 else None,
+    }
+
+
+def fetch_opensky_states(client_id, client_secret, lamin, lomin, lamax, lomax):
+    """
+    Fetch live state vectors inside a bounding box.
+
+    Returns dict keyed by lowercase ICAO24 hex.
+    """
+    headers = _opensky_auth_headers(client_id, client_secret)
+    params = {
+        'lamin': lamin,
+        'lomin': lomin,
+        'lamax': lamax,
+        'lomax': lomax,
+    }
+    response = requests.get(
+        f'{OPENSKY_API_BASE}/states/all',
+        headers=headers,
+        params=params,
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    states = payload.get('states') if isinstance(payload, dict) else None
+    if not states:
+        return {}
+    out = {}
+    for state in states:
+        parsed = _parse_opensky_state_vector(state)
+        if parsed:
+            out[parsed['icao24']] = parsed
+    return out
+
+
+def fetch_opensky_flights_interval(client_id, client_secret, begin, end):
+    """
+    Fetch flights in [begin, end] unix timestamps (max 2 hours).
+
+    Returns list of flight dicts, or [] on 404 / empty.
+    """
+    headers = _opensky_auth_headers(client_id, client_secret)
+    params = {'begin': int(begin), 'end': int(end)}
+    response = requests.get(
+        f'{OPENSKY_API_BASE}/flights/all',
+        headers=headers,
+        params=params,
+        timeout=20,
+    )
+    if response.status_code == 404:
+        return []
+    response.raise_for_status()
+    data = response.json()
+    return data if isinstance(data, list) else []
+
+
+def parse_opensky_flight_to_route(flight_obj):
+    """
+    Convert an OpenSky flight record to Pi-Sky route enrichment fields.
+
+    OpenSky airport fields are ICAO codes; prefer IATA when OpenFlights knows them.
+    """
+    if not isinstance(flight_obj, dict):
+        return None
+    dep_icao = (flight_obj.get('estDepartureAirport') or '').strip().upper()
+    arr_icao = (flight_obj.get('estArrivalAirport') or '').strip().upper()
+    if not dep_icao or not arr_icao:
+        return None
+
+    origin_info, origin_code = _best_airport_info(None, dep_icao)
+    dest_info, dest_code = _best_airport_info(None, arr_icao)
+    origin = (origin_info.get('iata') if origin_info else None) or origin_code or dep_icao
+    destination = (dest_info.get('iata') if dest_info else None) or dest_code or arr_icao
+
+    result = {
+        'origin': origin,
+        'destination': destination,
+        'source': OPENSKY_SOURCE_LABEL,
+    }
+    return enrich_route_info_from_openflights(
+        result,
+        origin_iata=origin if origin_info and origin_info.get('iata') == origin else None,
+        origin_icao=dep_icao,
+        destination_iata=destination if dest_info and dest_info.get('iata') == destination else None,
+        destination_icao=arr_icao,
+    )
+
+
+def build_opensky_flight_index(flights):
+    """Index OpenSky /flights/all results by lowercase ICAO24."""
+    index = {}
+    for flight in flights or []:
+        if not isinstance(flight, dict):
+            continue
+        icao = (flight.get('icao24') or '').strip().lower()
+        if not icao:
+            continue
+        # Keep the most recent lastSeen entry when duplicates exist
+        existing = index.get(icao)
+        if not existing or (flight.get('lastSeen') or 0) >= (existing.get('lastSeen') or 0):
+            index[icao] = flight
+    return index
+
     # Allow manual lookup from command line
     if len(sys.argv) < 3:
         print("Usage: python3 flight_info.py <ICAO> <CALLSIGN> [LAT] [LON]")

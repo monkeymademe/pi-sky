@@ -37,5 +37,10 @@
         "last_uploaded_at": null,
         "last_imported_at": null,
         "record_count": null
+    },
+    "opensky_network": {
+        "enabled": false,
+        "client_id": "",
+        "client_secret": ""
     }
 }
